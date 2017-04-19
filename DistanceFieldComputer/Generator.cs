@@ -1,9 +1,11 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 
 namespace DistanceFieldComputer
 {
@@ -24,6 +26,10 @@ namespace DistanceFieldComputer
         private IntPtr ptrnew;
         public float radius;
 
+        public int width;
+        public int height;
+        public PixelFormat pf;
+
         public void PrepareBitmaps()
         {
             var rect = new Rectangle(0, 0, original.Width, original.Height);
@@ -34,12 +40,13 @@ namespace DistanceFieldComputer
             origValues = new byte[bytes];
             Marshal.Copy(ptr, origValues, 0, bytes);
 
-            newData = distanceField.LockBits(rect, ImageLockMode.ReadWrite, original.PixelFormat);
+            newData = distanceField.LockBits(rect, ImageLockMode.ReadWrite, PixelFormat.Format24bppRgb);
             ptrnew = newData.Scan0;
             newValues = new byte[bytes];
             Marshal.Copy(ptrnew, newValues, 0, bytes);
-            /*for (int counter = 2; counter < origValues.Length; counter += 3)
-                origValues[counter] = 255;*/
+            width = original.Width;
+            height = original.Height;
+            pf = original.PixelFormat;
         }
 
         public void ComputePattern()
@@ -59,12 +66,45 @@ namespace DistanceFieldComputer
 
         public void GetPoints()
         {
-            for (var x = 0; x < original.Width; x++)
-            for (var y = 0; y < original.Height; y++)
+            List<Point> local1 = new List<Point>();
+            List<Point> local2 = new List<Point>();
+            List<Point> local3 = new List<Point>();
+            List<Point> local4 = new List<Point>();
+            Parallel.Invoke(
+                () =>
+                {
+                    GetPartPoints(0, 0, width / 2, height / 2,out local1);
+                    points.AddRange(local1);
+                },
+                () =>
+                {
+                    GetPartPoints(width / 2, 0, width / 2, height / 2, out local2);
+                    points.AddRange(local2);
+                },
+                () =>
+                {
+                    GetPartPoints(0, height / 2, width / 2, height / 2, out local3);
+                    points.AddRange(local3);
+                },
+                () =>
+                {
+                    GetPartPoints(width / 2, height / 2, width / 2, height / 2, out local4);
+                    points.AddRange(local4);
+                }
+            );
+        }
+
+        private void GetPartPoints(int startX,int startY, int sizeX,int sizeY,out List<Point> local)
+        {
+            local = new List<Point>();
+            for (var x = startX; x < startX+sizeX; x++)
+            for (var y = startY; y < startY+sizeY; y++)
             {
                 if (!IsPixelBlack(x, y))
-                    points.Add(new Point(x, y));
-                Console.Write("\r3/5 - Getting valid points {0}%, {1}/{2} finished               ", Math.Round((x * original.Height + y) / (float) (original.Height * original.Width) * 100.0f), x * original.Height + y, original.Height * original.Width);
+                {
+                    Console.Write("\r3/5 - Getting valid points {0}%, {1}/{2} finished               ", Math.Round((points.Count) / (float)(height * width) * 100.0f), points.Count, height * width);
+                    local.Add(new Point(x, y));
+                }
             }
         }
 
@@ -92,8 +132,8 @@ namespace DistanceFieldComputer
             {
                 if (float.IsNaN(point.distance))
                     point.distance = longest;
-                var color = Math.Min((int) Math.Round(point.distance / longest * 255), 255);
-                SetPixel(point.x, point.y, newValues, Color.FromArgb(255, color, color, color));
+                var color = (byte)Math.Min((int) Math.Round(point.distance / longest * 255), 255);
+                SetPixel(point.x, point.y, newValues,color);
                 Console.Write("\r5/5 - Computing image {0}%, {1}/{2} finished               ", Math.Round((float) points.IndexOf(point) / points.Count * 100.0f), (float) points.IndexOf(point), points.Count);
             }
             Marshal.Copy(origValues, 0, ptr, bytes);
@@ -105,7 +145,7 @@ namespace DistanceFieldComputer
 
         private bool IsPixelBlack(int x, int y)
         {
-            if (x <= 0 || x > original.Width - 1 || y <= 0 || y > original.Height - 1)
+            if (x <= 0 || x > width - 1 || y <= 0 || y > height - 1)
                 return false;
 
             return GetPixel(x, y, origValues) < 127;
@@ -113,46 +153,31 @@ namespace DistanceFieldComputer
 
         private byte GetPixel(int x, int y, byte[] image)
         {
-            var position = x * original.Width + y;
-            switch (original.PixelFormat)
+            var position = x * width + y;
+            switch (pf)
             {
                 case PixelFormat.Format24bppRgb:
                     position *= 3;
                     return image[position];
+                    break;
                 case PixelFormat.Format32bppArgb:
                     position *= 4;
                     position += 1;
                     return image[position];
+                    break;
                 default:
-                    Console.WriteLine(original.PixelFormat);
-                    throw new NotImplementedException();
+                    Console.WriteLine(pf);
+                    return 127;
+                    //throw new NotImplementedException();
             }
         }
 
-        private void SetPixel(int x, int y, byte[] image, Color color)
+        private void SetPixel(int x, int y, byte[] image, byte value)
         {
-            var position = x * original.Width + y;
-            switch (original.PixelFormat)
-            {
-                case PixelFormat.Format24bppRgb:
-                    position *= 3;
-                    image[position] = color.B;
-                    image[position + 1] = color.G;
-                    image[position + 2] = color.R;
-                    break;
-
-                case PixelFormat.Format32bppArgb:
-                    position *= 4;
-                    image[position] = 255;
-                    image[position + 1] = color.R;
-                    image[position + 2] = color.G;
-                    image[position + 3] = color.B;
-                    break;
-
-                default:
-                    Console.WriteLine(original.PixelFormat);
-                    throw new NotImplementedException();
-            }
+            var position = (x * original.Width + y)*3;
+            image[position] = value;
+            image[position + 1] = value;
+            image[position + 2] = value;
         }
     }
 }
