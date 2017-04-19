@@ -47,7 +47,7 @@ namespace DistanceFieldComputer
 
             g.radius = radius;
 
-            Console.WriteLine("Your file will be saved as" + savePath);
+            Console.WriteLine("Your file will be saved as " + savePath);
             Console.WriteLine("Continue?");
             ConsoleKeyInfo cki;
             do
@@ -77,11 +77,10 @@ namespace DistanceFieldComputer
             Console.WriteLine("Writing output file");
 
             g.ComputeImage();
-
-            Console.WriteLine("\nFinished in " + sw.ElapsedMilliseconds/1000 + " seconds");
-            Console.ReadKey();
-            
             g.distanceField.Save(savePath, g.original.RawFormat);
+
+            Console.WriteLine("\nFinished in " + sw.ElapsedMilliseconds / 1000 + " seconds");
+            Console.ReadLine();
         }
         
     }

@@ -19,14 +19,6 @@ namespace DistanceFieldComputer
 
         public void ComputeImage()
         {
-            foreach (Point distance in points)
-            {
-                if (!float.IsNaN(distance.distance) && distance.distance>longest)
-                {
-                    longest = distance.distance;
-                }
-                Console.Write("\r1/2 - Getting largest distance {0}% finished               ", Math.Round((float)points.IndexOf(distance) / points.Count * 100.0f));
-            }
             Console.Write("\n");
             foreach (Point distance in points)
             {
@@ -36,7 +28,7 @@ namespace DistanceFieldComputer
                 }
                 int color = Math.Min((int)Math.Round((distance.distance / longest)*255), 255);
                 distanceField.SetPixel(distance.x, distance.y, Color.FromArgb(255, color, color, color));
-                Console.Write("\r2/2 - Computing image {0}% finished               ", Math.Round((float)points.IndexOf(distance) / points.Count * 100.0f));
+                Console.Write("\r1/1 - Computing image {0}%, finished               ", Math.Round((float)points.IndexOf(distance) / points.Count * 100.0f));
             }
         }
 
@@ -50,10 +42,14 @@ namespace DistanceFieldComputer
                     if (isPixelBlack(validPixel.x+point.x,validPixel.y+point.y))
                     {
                         distance = point.distance;
+                        if (point.distance > longest)
+                        {
+                            longest = point.distance;
+                        }
                         break;
                     }
                 }
-                Console.Write("\r1/1 - Getting distances {0}%  , {1}/{2} finished               ", Math.Round((float)points.IndexOf(validPixel) / (float)points.Count * 100.0f),points.IndexOf(validPixel),points.Count);
+                Console.Write("\r1/1 - Getting distances {0}%, {1}/{2} finished               ", Math.Round((float)points.IndexOf(validPixel) / (float)points.Count * 100.0f),points.IndexOf(validPixel),points.Count);
                 validPixel.distance = distance;
             }
         }
@@ -68,7 +64,7 @@ namespace DistanceFieldComputer
                     {
                         points.Add(new Point(x, y));
                     }
-                    Console.Write("\r1/1 - Getting valid points {0}% , {1}/{2} finished               ", Math.Round((float)(x * original.Height + y) / (float)(original.Height * original.Width) * 100.0f),x*original.Height +y,original.Height*original.Width);
+                    Console.Write("\r1/1 - Getting valid points {0}%, {1}/{2} finished               ", Math.Round((float)(x * original.Height + y) / (float)(original.Height * original.Width) * 100.0f),x*original.Height +y,original.Height*original.Width);
                 }
             }
         }
@@ -90,7 +86,7 @@ namespace DistanceFieldComputer
                     {
                         pattern.Add(point);
                     }
-                    Console.Write("\r1/2 - Generating {0}% finished               ", Math.Round((float)(x * (radius+1) + y) / Math.Pow(radius+1,2) * 100.0f));
+                    Console.Write("\r1/2 - Generating {0}%, {1}/{2} finished               ", Math.Round((float)((x+radius) * (2*radius+1) + (y+radius)) / Math.Pow(2*radius+1,2) * 100.0f), ((x + radius) * (2 * radius + 1) + (y + radius)), Math.Pow(2 * radius + 1, 2));
                 }
             }
             Console.Write("\n2/2 - Sorting                            ");
