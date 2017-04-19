@@ -50,8 +50,9 @@ namespace DistanceFieldComputer
 
             var sw = Stopwatch.StartNew();
             g.distanceField = new Bitmap(g.original.Width, g.original.Height);
+            g.PrepareBitmaps();
             g.ComputePattern();
-            Console.WriteLine("\n");
+            Console.Write("\n");
             g.GetPoints();
             Console.Write("\n");
             g.GetDistances();
