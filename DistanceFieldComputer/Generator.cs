@@ -115,44 +115,51 @@ namespace DistanceFieldComputer
             List<Point> local2 = new List<Point>();
             List<Point> local3 = new List<Point>();
             List<Point> local4 = new List<Point>();
+            float longest1 = 0;
+            float longest2 = 0;
+            float longest3 = 0;
+            float longest4 = 0;
             Parallel.Invoke(
                 () =>
                 {
-                    GetPartDistances(1, out local1);
-                    distances.AddRange(local1);
+                    GetPartDistances(1, out local1,out longest1);
                 },
                 () =>
                 {
-                    GetPartDistances(2, out local2);
-                    distances.AddRange(local2);
+                    GetPartDistances(2, out local2, out longest2);
                 },
                 () =>
                 {
-                    GetPartDistances(3, out local3);
-                    distances.AddRange(local3);
+                    GetPartDistances(3, out local3, out longest3);
                 },
                 () =>
                 {
-                    GetPartDistances(4, out local4);
-                    distances.AddRange(local4);
+                    GetPartDistances(4, out local4, out longest4);
                 }
             );
+            distances.AddRange(local1);
+            distances.AddRange(local2);
+            distances.AddRange(local3);
+            distances.AddRange(local4);
+            longest = Math.Max(Math.Max(longest1, longest2), Math.Max(longest3, longest4));
         }
 
-        private void GetPartDistances(int quarter, out List<Point> local)
+        private void GetPartDistances(int quarter, out List<Point> local, out float localLongest)
         {
+            localLongest = 0;
             local = new List<Point>();
-            for (int i = (quarter-1)*points.Count; i < (points.Count/4)*quarter; i++)
+            for (int i = (int)((quarter-1)*((float)points.Count/4.0f)); i < (points.Count/4.0f)*quarter; i++)
             {
                 int x = points[i].x;
                 int y = points[i].y;
+
                 var distance = float.NaN;
                 foreach (var point in pattern)
-                    if (IsPixelBlack(x + point.x, y + points[i].y))
+                    if (IsPixelBlack(x + point.x, y + point.y))
                     {
                         distance = point.distance;
-                        if (point.distance > longest)
-                            longest = point.distance;
+                        if (point.distance > localLongest)
+                            localLongest = point.distance;
                         break;
                     }
                 Console.Write("\r4/5 - Getting distances {0}%, {1}/{2} finished               ", Math.Round(i / (float)points.Count * 100.0f), i, points.Count);
@@ -162,13 +169,13 @@ namespace DistanceFieldComputer
 
         public void ComputeImage()
         {
-            foreach (var point in points)
+            foreach (var point in distances)
             {
                 if (float.IsNaN(point.distance))
                     point.distance = longest;
                 var color = (byte)Math.Min((int) Math.Round(point.distance / longest * 255), 255);
                 SetPixel(point.x, point.y, newValues,color);
-                Console.Write("\r5/5 - Computing image {0}%, {1}/{2} finished               ", Math.Round((float) points.IndexOf(point) / points.Count * 100.0f), (float) points.IndexOf(point), points.Count);
+                Console.Write("\r5/5 - Computing image {0}%, {1}/{2} finished               ", Math.Round((float) distances.IndexOf(point) / distances.Count * 100.0f), (float) distances.IndexOf(point), distances.Count);
             }
             Marshal.Copy(origValues, 0, ptr, bytes);
             original.UnlockBits(originalData);
@@ -179,7 +186,7 @@ namespace DistanceFieldComputer
 
         private bool IsPixelBlack(int x, int y)
         {
-            if (x <= 0 || x > width - 1 || y <= 0 || y > height - 1)
+            if (x < 0 || x > width - 1 || y < 0 || y > height - 1)
                 return false;
 
             return GetPixel(x, y, origValues) < 127;
