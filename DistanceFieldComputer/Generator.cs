@@ -162,13 +162,13 @@ namespace DistanceFieldComputer
 
         public void ComputeImage()
         {
-            foreach (var point in points)
+            foreach (var point in distances)
             {
                 if (float.IsNaN(point.distance))
                     point.distance = longest;
                 var color = (byte)Math.Min((int) Math.Round(point.distance / longest * 255), 255);
                 SetPixel(point.x, point.y, newValues,color);
-                Console.Write("\r5/5 - Computing image {0}%, {1}/{2} finished               ", Math.Round((float) points.IndexOf(point) / points.Count * 100.0f), (float) points.IndexOf(point), points.Count);
+                Console.Write("\r5/5 - Computing image {0}%, {1}/{2} finished               ", Math.Round((float) distances.IndexOf(point) / distances.Count * 100.0f), (float) distances.IndexOf(point), distances.Count);
             }
             Marshal.Copy(origValues, 0, ptr, bytes);
             original.UnlockBits(originalData);
