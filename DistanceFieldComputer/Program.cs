@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Imaging;
 using System.IO;
 
 namespace DistanceFieldComputer
@@ -49,9 +50,10 @@ namespace DistanceFieldComputer
             } while (cki.Key != ConsoleKey.Enter);
 
             var sw = Stopwatch.StartNew();
-            g.distanceField = new Bitmap(g.original.Width, g.original.Height);
+            g.distanceField = new Bitmap(g.original.Width, g.original.Height,PixelFormat.Format24bppRgb);
+            g.PrepareBitmaps();
             g.ComputePattern();
-            Console.WriteLine("\n");
+            Console.Write("\n");
             g.GetPoints();
             Console.Write("\n");
             g.GetDistances();
