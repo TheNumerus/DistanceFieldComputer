@@ -22,6 +22,7 @@ namespace DistanceFieldComputer
         private byte[] origValues;
         public List<Point> pattern = new List<Point>();
         public List<Point> points = new List<Point>();
+        public List<Point> distances = new List<Point>();
         private IntPtr ptr;
         private IntPtr ptrnew;
         public float radius;
@@ -110,19 +111,52 @@ namespace DistanceFieldComputer
 
         public void GetDistances()
         {
-            foreach (var validPixel in points)
+            List<Point> local1 = new List<Point>();
+            List<Point> local2 = new List<Point>();
+            List<Point> local3 = new List<Point>();
+            List<Point> local4 = new List<Point>();
+            Parallel.Invoke(
+                () =>
+                {
+                    GetPartDistances(1, out local1);
+                    distances.AddRange(local1);
+                },
+                () =>
+                {
+                    GetPartDistances(2, out local2);
+                    distances.AddRange(local2);
+                },
+                () =>
+                {
+                    GetPartDistances(3, out local3);
+                    distances.AddRange(local3);
+                },
+                () =>
+                {
+                    GetPartDistances(4, out local4);
+                    distances.AddRange(local4);
+                }
+            );
+        }
+
+        private void GetPartDistances(int quarter, out List<Point> local)
+        {
+            local = new List<Point>();
+            for (int i = (quarter-1)*points.Count; i < (points.Count/4)*quarter; i++)
             {
+                int x = points[i].x;
+                int y = points[i].y;
                 var distance = float.NaN;
                 foreach (var point in pattern)
-                    if (IsPixelBlack(validPixel.x + point.x, validPixel.y + point.y))
+                    if (IsPixelBlack(x + point.x, y + points[i].y))
                     {
                         distance = point.distance;
                         if (point.distance > longest)
                             longest = point.distance;
                         break;
                     }
-                Console.Write("\r4/5 - Getting distances {0}%, {1}/{2} finished               ", Math.Round(points.IndexOf(validPixel) / (float) points.Count * 100.0f), points.IndexOf(validPixel), points.Count);
-                validPixel.distance = distance;
+                Console.Write("\r4/5 - Getting distances {0}%, {1}/{2} finished               ", Math.Round(i / (float)points.Count * 100.0f), i, points.Count);
+                local.Add(new Point(x,y,distance));
             }
         }
 
