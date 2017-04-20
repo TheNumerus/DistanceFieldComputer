@@ -12,6 +12,7 @@ namespace DistanceFieldComputer
     internal class Generator
     {
         private int bytes;
+        private int bytesNew;
         public Bitmap distanceField = new Bitmap(1, 1);
         public float longest = float.MinValue;
         private BitmapData newData;
@@ -38,13 +39,15 @@ namespace DistanceFieldComputer
             originalData = original.LockBits(rect, ImageLockMode.ReadOnly, original.PixelFormat);
             ptr = originalData.Scan0;
             bytes = Math.Abs(originalData.Stride) * original.Height;
+            Console.WriteLine(bytes);
             origValues = new byte[bytes];
             Marshal.Copy(ptr, origValues, 0, bytes);
 
             newData = distanceField.LockBits(rect, ImageLockMode.ReadWrite, PixelFormat.Format24bppRgb);
             ptrnew = newData.Scan0;
-            newValues = new byte[bytes];
-            Marshal.Copy(ptrnew, newValues, 0, bytes);
+            bytesNew = Math.Abs(originalData.Stride) * original.Height;
+            newValues = new byte[bytesNew];
+            Marshal.Copy(ptrnew, newValues, 0, bytesNew);
             width = original.Width;
             height = original.Height;
             pf = original.PixelFormat;
@@ -169,19 +172,52 @@ namespace DistanceFieldComputer
 
         public void ComputeImage()
         {
-            foreach (var point in distances)
+            Parallel.Invoke(
+                () =>
+                {
+                    ComputePartImage(1);
+                },
+                () =>
+                {
+                    ComputePartImage(2);
+                },
+                () =>
+                {
+                    ComputePartImage(3);
+                },
+                () =>
+                {
+                    ComputePartImage(4);
+                }
+            );
+            /*foreach (var point in distances)
             {
                 if (float.IsNaN(point.distance))
                     point.distance = longest;
                 var color = (byte)Math.Min((int) Math.Round(point.distance / longest * 255), 255);
                 SetPixel(point.x, point.y, newValues,color);
                 Console.Write("\r5/5 - Computing image {0}%, {1}/{2} finished               ", Math.Round((float) distances.IndexOf(point) / distances.Count * 100.0f), (float) distances.IndexOf(point), distances.Count);
-            }
+            }*/
             Marshal.Copy(origValues, 0, ptr, bytes);
             original.UnlockBits(originalData);
 
             Marshal.Copy(newValues, 0, ptrnew, bytes);
             distanceField.UnlockBits(newData);
+        }
+
+        private void ComputePartImage(int quarter)
+        {
+            var point = new Point(-1,-1);
+            for (int i = (int)((quarter - 1) * ((float)points.Count / 4.0f)); i < (points.Count / 4.0f) * quarter; i++)
+            {
+                point = distances[i];
+                if (float.IsNaN(point.distance))
+                    point.distance = longest;
+                var color = (byte)Math.Min((int)Math.Round(point.distance / longest * 255), 255);
+                SetPixel(point.x, point.y, newValues, color);
+                Console.Write("\r5/5 - Computing image {0}%, {1}/{2} finished               ", Math.Round((float)i / distances.Count * 100.0f), (float)i, distances.Count);
+
+            }
         }
 
         private bool IsPixelBlack(int x, int y)
@@ -215,7 +251,7 @@ namespace DistanceFieldComputer
 
         private void SetPixel(int x, int y, byte[] image, byte value)
         {
-            var position = (x * original.Width + y)*3;
+            var position = (x * width + y)*3;
             image[position] = value;
             image[position + 1] = value;
             image[position + 2] = value;
