@@ -159,7 +159,7 @@ namespace DistanceFieldComputer
                 {
                     if (IsPixelOutOfImage(x + point.x, y + point.y))
                     {
-                        break;
+                        continue;
                     }
                     if (IsPixelBlack(x, y))
                     {
