@@ -5,64 +5,85 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace DistanceFieldComputer
 {
     internal class Generator
     {
-        private int bytes;
-        private int bytesNew;
-        public Bitmap distanceField = new Bitmap(1, 1);
-        public float longest = float.MinValue;
-        private BitmapData newData;
-        private byte[] newValues;
-        public Bitmap original = new Bitmap(1, 1);
-        private BitmapData originalData;
+#region variable definitions
+        //input image variables
+        public Bitmap inputImage = new Bitmap(1, 1);
+        private BitmapData inputData;
+        private IntPtr inputPointer;
+        private int inputSize;
+        private byte[] inputValues;
 
-        private byte[] origValues;
+        //output image variables
+        public Bitmap outputImage = new Bitmap(1, 1);
+        private BitmapData outputData;
+        private IntPtr outputPointer;
+        private int outputSize;
+        private byte[] outputValues;
+        
+        //working variables
         public List<Point> pattern = new List<Point>();
-        public List<Point> points = new List<Point>();
-        public List<Point> distances = new List<Point>();
-        private IntPtr ptr;
-        private IntPtr ptrnew;
-        public float radius;
+        public ConcurrentQueue<Bucket> buckets = new ConcurrentQueue<Bucket>();
+        private ManualResetEvent doneEvent = new ManualResetEvent(false);
+        public int progress = 0;
 
+        //and input variables
+        public float radius = 32;
+        public int threshold = 127;
+        
+        //image info
         public int width;
         public int height;
         public PixelFormat pf;
-
+        #endregion
+#region main methods
         public void PrepareBitmaps()
         {
-            var rect = new Rectangle(0, 0, original.Width, original.Height);
 
-            originalData = original.LockBits(rect, ImageLockMode.ReadOnly, original.PixelFormat);
-            ptr = originalData.Scan0;
-            bytes = Math.Abs(originalData.Stride) * original.Height;
-            Console.WriteLine(bytes);
-            origValues = new byte[bytes];
-            Marshal.Copy(ptr, origValues, 0, bytes);
+            Rectangle rect = new Rectangle(0, 0, inputImage.Width, inputImage.Height);
 
-            newData = distanceField.LockBits(rect, ImageLockMode.ReadWrite, PixelFormat.Format24bppRgb);
-            ptrnew = newData.Scan0;
-            bytesNew = Math.Abs(originalData.Stride) * original.Height;
-            newValues = new byte[bytesNew];
-            Marshal.Copy(ptrnew, newValues, 0, bytesNew);
-            width = original.Width;
-            height = original.Height;
-            pf = original.PixelFormat;
+            //prepare input data
+            inputData = inputImage.LockBits(rect, ImageLockMode.ReadOnly, inputImage.PixelFormat);
+            inputPointer = inputData.Scan0;
+            inputSize = Math.Abs(inputData.Stride) * inputImage.Height;
+            inputValues = new byte[inputSize];
+            Marshal.Copy(inputPointer, inputValues, 0, inputSize);
+
+            //prepare output data
+            outputData = outputImage.LockBits(rect, ImageLockMode.ReadWrite, PixelFormat.Format24bppRgb);
+            outputPointer = outputData.Scan0;
+            outputSize = Math.Abs(inputData.Stride) * inputImage.Height;
+            outputValues = new byte[outputSize];
+            Marshal.Copy(outputPointer, outputValues, 0, outputSize);
+
+            //set image info and prepare multithreading
+            width = inputImage.Width;
+            height = inputImage.Height;
+            pf = inputImage.PixelFormat;
+            ThreadPool.SetMaxThreads(Environment.ProcessorCount, Environment.ProcessorCount);
         }
 
         public void ComputePattern()
         {
+            int totalPoints = (int)Math.Pow(2 * radius + 1, 2);
+            int pointsSoFar;
+            //get list of points sorted by shortest distance to center, this way we can speed up the process of finding pixels
             for (var x = -(int) radius; x <= radius; x++)
             for (var y = -(int) radius; y <= radius; y++)
             {
-                var point = new Point(x, y);
+                Point point = new Point(x, y);
+                //precompute distance to speed up the process later
                 point.ComputeDistanceToOrigin();
                 if (point.distance <= radius)
                     pattern.Add(point);
-                Console.Write("\r1/5 - Generating pattern {0}%, {1}/{2} finished               ", Math.Round(((x + radius) * (2 * radius + 1) + (y + radius)) / Math.Pow(2 * radius + 1, 2) * 100.0f), (x + radius) * (2 * radius + 1) + (y + radius), Math.Pow(2 * radius + 1, 2));
+                pointsSoFar = (int)((x + radius) * (2 * radius + 1) + (y + radius)) +1;
+                Console.Write("\r1/5 - Generating pattern {0}%, {1}/{2} finished               ", Math.Round((float)pointsSoFar / totalPoints * 100.0f),pointsSoFar,totalPoints);
             }
             Console.Write("\n2/5 - Sorting pattern                            ");
             pattern = pattern.OrderBy(o => o.distance).ToList();
@@ -70,189 +91,190 @@ namespace DistanceFieldComputer
 
         public void GetPoints()
         {
-            List<Point> local1 = new List<Point>();
-            List<Point> local2 = new List<Point>();
-            List<Point> local3 = new List<Point>();
-            List<Point> local4 = new List<Point>();
-            Parallel.Invoke(
-                () =>
-                {
-                    GetPartPoints(0, 0, width / 2, height / 2,out local1);
-                    points.AddRange(local1);
-                },
-                () =>
-                {
-                    GetPartPoints(width / 2, 0, width / 2, height / 2, out local2);
-                    points.AddRange(local2);
-                },
-                () =>
-                {
-                    GetPartPoints(0, height / 2, width / 2, height / 2, out local3);
-                    points.AddRange(local3);
-                },
-                () =>
-                {
-                    GetPartPoints(width / 2, height / 2, width / 2, height / 2, out local4);
-                    points.AddRange(local4);
-                }
-            );
+            int x = (int)Math.Ceiling(width / radius);
+            int y = (int)Math.Ceiling(height / radius);
+
+            //create indexed bucket array for quicker access, 0 for black, 1 for white, 2 for nearby
+            byte[,] indices = new byte[x,y];
+            for (var _x = 0; _x < x; _x++) for (var _y = 0; _y < y; _y++) indices[_x, _y] = 0;
+
+            //create buckets
+            GetPrimaryBuckets(x, y, indices);       
+            
+            //now add buckets whict don't contain white pixels, but are close to one
+            GetNeighbourBuckets(x, y, indices);
         }
-        //TODO optimize code for out of reach pixels
-        //TODO rewrite code to worker threads, use bucket size, 
-        private void GetPartPoints(int startX,int startY, int sizeX,int sizeY,out List<Point> local)
+
+        private void GetPrimaryBuckets(int x, int y,byte[,] indices)
         {
-            local = new List<Point>();
-            for (var x = startX; x < startX+sizeX; x++)
-            for (var y = startY; y < startY+sizeY; y++)
+            //prepare helper variables
+            int xCenter;
+            int yCenter;
+            int halfRadius = (int)Math.Ceiling(radius / 2);
+
+            for (var _x = 0; _x < x; _x++)
+            for (var _y = 0; _y < y; _y++)
             {
-                Console.Write("\r3/5 - Getting valid points {0}%, {1}/{2} finished               ", Math.Round((points.Count) / (float)(height * width) * 100.0f), points.Count, height * width);
-                local.Add(new Point(x, y));
+                Bucket bucket = new Bucket(_x, _y);
+                xCenter = (int)((_x * radius) + halfRadius);
+                yCenter = (int)((_y * radius) + halfRadius);
+                //detect white pixel in the bucket because of optimization
+                foreach (Point p in pattern)
+                {
+                    //discard points outside of the bucket
+                    if ((p.x + xCenter) > xCenter + halfRadius || (p.x + xCenter) < xCenter - halfRadius || (p.y + yCenter) > yCenter + halfRadius || (p.y + yCenter) < yCenter - halfRadius)
+                        continue;
+                    if (!IsPixelBlack(xCenter + p.x, yCenter + p.y))
+                    {
+                        bucket.Fill(width, height, (int)radius);
+                        buckets.Enqueue(bucket);
+                        indices[_x, _y] = 1;
+                        break;
+                    }
+                }
             }
+            Console.Write("3/5 - 50% {0} primary buckets found.", buckets.Count);
+        }
+
+        private void GetNeighbourBuckets(int x, int y, byte[,] indices)
+        {
+            for (var _x = 0; _x < x; _x++)
+            for (var _y = 0; _y < y; _y++)
+            {
+                //don't check for already usable buckets
+                if (indices[_x, _y] != 0)
+                    continue;
+                for (var xOffset = -1; xOffset <= 1; xOffset++)
+                for (var yOffset = -1; yOffset <= 1; yOffset++)
+                {
+                    //check for invalid bucket indices
+                    if (0 > (_x + xOffset) || (_x + xOffset) > x || 0 > (_y + yOffset) || (_y + yOffset) > y)
+                        continue;
+
+                    //check for self and newly added buckets
+                    if ((xOffset == 0 && yOffset == 0) || indices[_x, _y] == 2)
+                        continue;
+
+                    if (indices[_x + xOffset, _y + yOffset] == 1)
+                    {
+                        Bucket bucket = new Bucket(_x, _y);
+                        bucket.Fill(width, height, (int)radius);
+                        buckets.Enqueue(bucket);
+                        indices[_x, _y] = 2;
+                        continue;
+                    }
+                }
+            }
+            Console.Write("\r3/5 - 100% Buckets done, {0} total.  ", buckets.Count);
         }
 
         public void GetDistances()
         {
-            List<Point> local1 = new List<Point>();
-            List<Point> local2 = new List<Point>();
-            List<Point> local3 = new List<Point>();
-            List<Point> local4 = new List<Point>();
-            float longest1 = 0;
-            float longest2 = 0;
-            float longest3 = 0;
-            float longest4 = 0;
-            Parallel.Invoke(
-                () =>
-                {
-                    GetPartDistances(1, out local1,out longest1);
-                },
-                () =>
-                {
-                    GetPartDistances(2, out local2, out longest2);
-                },
-                () =>
-                {
-                    GetPartDistances(3, out local3, out longest3);
-                },
-                () =>
-                {
-                    GetPartDistances(4, out local4, out longest4);
-                }
-            );
-            distances.AddRange(local1);
-            distances.AddRange(local2);
-            distances.AddRange(local3);
-            distances.AddRange(local4);
-            longest = Math.Max(Math.Max(longest1, longest2), Math.Max(longest3, longest4));
-        }
-        //TODO separate distance to white and to black pixels
-        private void GetPartDistances(int quarter, out List<Point> local, out float localLongest)
-        {
-            localLongest = 0;
-            local = new List<Point>();
-            for (int i = (int)((quarter-1)*((float)points.Count/4.0f)); i < (points.Count/4.0f)*quarter; i++)
+            progress = 0;
+            foreach(Bucket bucket in buckets)
             {
-                int x = points[i].x;
-                int y = points[i].y;
+                ThreadPool.QueueUserWorkItem(GetDistanceBucket, bucket);
+            }
+            //wait for threads to finish
+            doneEvent.WaitOne();
+        }
+
+        private void GetDistanceBucket(object bucket)
+        {
+            foreach (Point p in ((Bucket)bucket).points)
+            {
+                int x = p.x;
+                int y = p.y;
 
                 var distance = float.NaN;
+                //check for distance for one pixel, using sorted list of points to speed up the process
                 foreach (var point in pattern)
                 {
+                    //discard pixel from outside the image
                     if (IsPixelOutOfImage(x + point.x, y + point.y))
-                    {
                         continue;
-                    }
-                    if (IsPixelBlack(x, y))
+                    //check for distances
+                    if (IsPixelBlack(x, y) && !IsPixelBlack(x + point.x, y + point.y))
                     {
-                        if (!IsPixelBlack(x + point.x, y + point.y))
-                        {
-                            distance = point.distance;
-                            if (point.distance > localLongest)
-                                localLongest = point.distance;
-                            break;
-                        }
+                        distance = point.distance;
+                        break;
                     }
-                    else
+                    if (!IsPixelBlack(x, y) && IsPixelBlack(x + point.x, y + point.y))
                     {
-                        if (IsPixelBlack(x + point.x, y + point.y))
-                        {
-                            distance = point.distance;
-                            if (point.distance > localLongest)
-                                localLongest = point.distance;
-                            break;
-                        }
+                        distance = point.distance;
+                        break;
                     }
                 }
-
-                Console.Write("\r4/5 - Getting distances {0}%, {1}/{2} finished               ", Math.Round(i / (float)points.Count * 100.0f), i, points.Count);
-                local.Add(new Point(x, y, distance));
+                p.distance = distance;
             }
+            //update progess
+            progress++;
+            Console.Write("\r4/5 - Getting distances {0}%, {1}/{2} finished               ", Math.Round((float)progress / buckets.Count * 100), progress, buckets.Count);
+            if (progress == buckets.Count) doneEvent.Set();
         }
-
+        
+        //TODO fix brightness offset
         public void ComputeImage()
         {
-            Parallel.Invoke(
-                () =>
-                {
-                    ComputePartImage(1);
-                },
-                () =>
-                {
-                    ComputePartImage(2);
-                },
-                () =>
-                {
-                    ComputePartImage(3);
-                },
-                () =>
-                {
-                    ComputePartImage(4);
-                }
-            );
-            Marshal.Copy(origValues, 0, ptr, bytes);
-            original.UnlockBits(originalData);
+            doneEvent = new ManualResetEvent(false);
 
-            Marshal.Copy(newValues, 0, ptrnew, bytes);
-            distanceField.UnlockBits(newData);
-        }
-        //TODO fix memory leak here
-        //TODO fix brightness offset
-        private void ComputePartImage(int quarter)
-        {
-            var point = new Point(-1,-1);
-            var color = (byte)0;
-            for (int i = (int)((quarter - 1) * ((float)points.Count / 4.0f)); i < (points.Count / 4.0f) * quarter; i++)
+            progress = 0;
+            foreach (Bucket bucket in buckets)
             {
-                point = distances[i];
+                ThreadPool.QueueUserWorkItem(ComputeImageBucket, bucket);
+            }
+
+            //wait for threads to finish
+            doneEvent.WaitOne();
+
+            //unlock image data for saving
+            Marshal.Copy(inputValues, 0, inputPointer, inputSize);
+            inputImage.UnlockBits(inputData);
+            
+            Marshal.Copy(outputValues, 0, outputPointer, inputSize);
+            outputImage.UnlockBits(outputData);
+        }
+
+        private void ComputeImageBucket(object bucket)
+        {
+            byte color = 0;
+            foreach (Point point in ((Bucket)bucket).points)
+            {
                 if (!IsPixelBlack(point.x, point.y))
                 {
+                    //set white pixels
                     if (float.IsNaN(point.distance))
-                        point.distance = longest;
-                    color = (byte)Math.Min(((int)Math.Round(point.distance / longest * 255f)/2f)+127f, 255);
-                    SetPixel(point.x, point.y, newValues, color);
+                        point.distance = radius;
+                    color = (byte)Math.Min(((int)Math.Round(point.distance / radius * 255f) / 2f) + 127f, 255);
+                    SetPixel(point.x, point.y, outputValues, color);
                 }
-                else {
+                else
+                {
+                    //set black pixels
                     if (float.IsNaN(point.distance))
-                        point.distance = longest;
-                    color = (byte)Math.Min((int)Math.Round((1f-point.distance / longest) * 255f)/2f, 255);
-                    SetPixel(point.x, point.y, newValues, color);
+                        point.distance = radius;
+                    color = (byte)Math.Min((int)Math.Round((1f - point.distance / radius) * 255f) / 2f, 255);
+                    SetPixel(point.x, point.y, outputValues, color);
                 }
-                
-                Console.Write("\r5/5 - Computing image {0}%, {1}/{2} finished               ", Math.Round((float)i / distances.Count * 100.0f), (float)i, distances.Count);
-
             }
+            //update progess
+            progress++;
+            Console.Write("\r5/5 - Computing image {0}%, {1}/{2} finished               ", Math.Round((float)progress / buckets.Count * 100.0f), progress, buckets.Count);
+            if (progress == buckets.Count) doneEvent.Set();
         }
-        //TODO implement threshhold
+#endregion
+#region helpers
         private bool IsPixelBlack(int x, int y)
         {
             if (x < 0 || x > width - 1 || y < 0 || y > height - 1)
                 return false;
 
-            return GetPixel(x, y, origValues) < 127;
+            return GetPixel(x, y, inputValues) < threshold;
         }
 
         private bool IsPixelOutOfImage(int x, int y)
         {
-            if (x < 0 || x > width - 1 || y < 0 || y > height - 1)
+            if (x < 0 || x >= width || y < 0 || y >= height)
                 return true;
 
             return false;
@@ -266,12 +288,10 @@ namespace DistanceFieldComputer
                 case PixelFormat.Format24bppRgb:
                     position *= 3;
                     return image[position];
-                    break;
                 case PixelFormat.Format32bppArgb:
                     position *= 4;
                     position += 1;
                     return image[position];
-                    break;
                 default:
                     Console.WriteLine(pf);
                     return 127;
@@ -286,5 +306,6 @@ namespace DistanceFieldComputer
             image[position + 1] = value;
             image[position + 2] = value;
         }
+#endregion
     }
 }

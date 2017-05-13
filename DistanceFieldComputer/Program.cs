@@ -10,47 +10,66 @@ namespace DistanceFieldComputer
     {
         private static void Main(string[] args)
         {
+            //create new generator for distance field
             var g = new Generator();
-            float radius;
 
+            //check if user importer bitmap
             if (args.Length == 0)
             {
-                Console.WriteLine("You need to specify bitmap location");
+                Console.WriteLine("You need to specify bitmap location. Please drag & drop image onto executable, or pass link as first argument.");
                 Console.ReadKey();
                 Environment.Exit(-1);
             }
+            //check if valid input image
             try
             {
-                g.original = new Bitmap(args[0]);
+                g.inputImage = new Bitmap(args[0]);
             }
             catch (Exception e)
             {
-                Console.WriteLine(e);
+                Console.WriteLine("You entered invalid file. Program will now exit.");
+                Console.ReadKey();
+                Environment.Exit(-1);
             }
+            //generate output name and get location
             var SaveDirectory = Path.GetDirectoryName(args[0]);
             var savePath = SaveDirectory + "\\" + Path.GetFileNameWithoutExtension(args[0]) + "_output" + Path.GetExtension(args[0]);
+
+            //show info to user
             Console.WriteLine("You opened " + args[0]);
-            Console.WriteLine("Size of that texture is : " + g.original.Width + " x " + g.original.Height);
+            Console.WriteLine("Size of that texture is : " + g.inputImage.Width + " x " + g.inputImage.Height);
+
+            //get radius
             Console.Write("Enter search radius: ");
-            string line;
+            string radiusString;
             do
             {
-                line = Console.ReadLine();
-            } while (!float.TryParse(line, out radius));
+                radiusString = Console.ReadLine();
+            } while (!float.TryParse(radiusString, out g.radius));
 
-            g.radius = radius;
+            //get threshold
+            Console.Write("Enter search threshold: ");
+            string thresholdString;
+            do
+            {
+                thresholdString = Console.ReadLine();
+            } while (!int.TryParse(thresholdString, out g.threshold));
 
             Console.WriteLine("Your file will be saved as " + savePath);
             Console.WriteLine("Continue?");
             ConsoleKeyInfo cki;
+            //get user confirmation to continue
             do
             {
                 cki = Console.ReadKey();
                 if (cki.Key == ConsoleKey.Escape) Environment.Exit(-1);
             } while (cki.Key != ConsoleKey.Enter);
 
+            //start timer and create output bitmap
             var sw = Stopwatch.StartNew();
-            g.distanceField = new Bitmap(g.original.Width, g.original.Height,PixelFormat.Format24bppRgb);
+            g.outputImage = new Bitmap(g.inputImage.Width, g.inputImage.Height,PixelFormat.Format24bppRgb);
+
+            //process functions
             g.PrepareBitmaps();
             g.ComputePattern();
             Console.Write("\n");
@@ -60,7 +79,9 @@ namespace DistanceFieldComputer
             Console.Write("\n");
             g.ComputeImage();
             Console.WriteLine("\n");
-            g.distanceField.Save(savePath, g.original.RawFormat);
+
+            //save image
+            g.outputImage.Save(savePath, g.inputImage.RawFormat);
 
             Console.WriteLine("\nFinished in " + sw.ElapsedMilliseconds / 1000 + " seconds");
             Console.ReadLine();
