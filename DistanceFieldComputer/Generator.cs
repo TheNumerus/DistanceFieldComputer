@@ -97,18 +97,16 @@ namespace DistanceFieldComputer
                 }
             );
         }
-
+        //TODO optimize code for out of reach pixels
+        //rewrite code to worker threads, use bucket size, 
         private void GetPartPoints(int startX,int startY, int sizeX,int sizeY,out List<Point> local)
         {
             local = new List<Point>();
             for (var x = startX; x < startX+sizeX; x++)
             for (var y = startY; y < startY+sizeY; y++)
             {
-                if (!IsPixelBlack(x, y))
-                {
-                    Console.Write("\r3/5 - Getting valid points {0}%, {1}/{2} finished               ", Math.Round((points.Count) / (float)(height * width) * 100.0f), points.Count, height * width);
-                    local.Add(new Point(x, y));
-                }
+                Console.Write("\r3/5 - Getting valid points {0}%, {1}/{2} finished               ", Math.Round((points.Count) / (float)(height * width) * 100.0f), points.Count, height * width);
+                local.Add(new Point(x, y));
             }
         }
 
@@ -158,15 +156,35 @@ namespace DistanceFieldComputer
 
                 var distance = float.NaN;
                 foreach (var point in pattern)
-                    if (IsPixelBlack(x + point.x, y + point.y))
+                {
+                    if (IsPixelOutOfImage(x + point.x, y + point.y))
                     {
-                        distance = point.distance;
-                        if (point.distance > localLongest)
-                            localLongest = point.distance;
                         break;
                     }
+                    if (IsPixelBlack(x, y))
+                    {
+                        if (!IsPixelBlack(x + point.x, y + point.y))
+                        {
+                            distance = point.distance;
+                            if (point.distance > localLongest)
+                                localLongest = point.distance;
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        if (IsPixelBlack(x + point.x, y + point.y))
+                        {
+                            distance = point.distance;
+                            if (point.distance > localLongest)
+                                localLongest = point.distance;
+                            break;
+                        }
+                    }
+                }
+
                 Console.Write("\r4/5 - Getting distances {0}%, {1}/{2} finished               ", Math.Round(i / (float)points.Count * 100.0f), i, points.Count);
-                local.Add(new Point(x,y,distance));
+                local.Add(new Point(x, y, distance));
             }
         }
 
@@ -190,31 +208,35 @@ namespace DistanceFieldComputer
                     ComputePartImage(4);
                 }
             );
-            /*foreach (var point in distances)
-            {
-                if (float.IsNaN(point.distance))
-                    point.distance = longest;
-                var color = (byte)Math.Min((int) Math.Round(point.distance / longest * 255), 255);
-                SetPixel(point.x, point.y, newValues,color);
-                Console.Write("\r5/5 - Computing image {0}%, {1}/{2} finished               ", Math.Round((float) distances.IndexOf(point) / distances.Count * 100.0f), (float) distances.IndexOf(point), distances.Count);
-            }*/
             Marshal.Copy(origValues, 0, ptr, bytes);
             original.UnlockBits(originalData);
 
             Marshal.Copy(newValues, 0, ptrnew, bytes);
             distanceField.UnlockBits(newData);
         }
-
+        //TODO fix memory leak here
+        //TOFO fix brightness offset
         private void ComputePartImage(int quarter)
         {
             var point = new Point(-1,-1);
+            var color = (byte)0;
             for (int i = (int)((quarter - 1) * ((float)points.Count / 4.0f)); i < (points.Count / 4.0f) * quarter; i++)
             {
                 point = distances[i];
-                if (float.IsNaN(point.distance))
-                    point.distance = longest;
-                var color = (byte)Math.Min((int)Math.Round(point.distance / longest * 255), 255);
-                SetPixel(point.x, point.y, newValues, color);
+                if (!IsPixelBlack(point.x, point.y))
+                {
+                    if (float.IsNaN(point.distance))
+                        point.distance = longest;
+                    color = (byte)Math.Min(((int)Math.Round(point.distance / longest * 255f)/2f)+127f, 255);
+                    SetPixel(point.x, point.y, newValues, color);
+                }
+                else {
+                    if (float.IsNaN(point.distance))
+                        point.distance = longest;
+                    color = (byte)Math.Min((int)Math.Round((1f-point.distance / longest) * 255f)/2f, 255);
+                    SetPixel(point.x, point.y, newValues, color);
+                }
+                
                 Console.Write("\r5/5 - Computing image {0}%, {1}/{2} finished               ", Math.Round((float)i / distances.Count * 100.0f), (float)i, distances.Count);
 
             }
@@ -226,6 +248,13 @@ namespace DistanceFieldComputer
                 return false;
 
             return GetPixel(x, y, origValues) < 127;
+        }
+        private bool IsPixelOutOfImage(int x, int y)
+        {
+            if (x < 0 || x > width - 1 || y < 0 || y > height - 1)
+                return true;
+
+            return false;
         }
 
         private byte GetPixel(int x, int y, byte[] image)
