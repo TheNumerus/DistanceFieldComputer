@@ -98,7 +98,7 @@ namespace DistanceFieldComputer
             );
         }
         //TODO optimize code for out of reach pixels
-        //rewrite code to worker threads, use bucket size, 
+        //TODO rewrite code to worker threads, use bucket size, 
         private void GetPartPoints(int startX,int startY, int sizeX,int sizeY,out List<Point> local)
         {
             local = new List<Point>();
@@ -144,7 +144,7 @@ namespace DistanceFieldComputer
             distances.AddRange(local4);
             longest = Math.Max(Math.Max(longest1, longest2), Math.Max(longest3, longest4));
         }
-
+        //TODO separate distance to white and to black pixels
         private void GetPartDistances(int quarter, out List<Point> local, out float localLongest)
         {
             localLongest = 0;
@@ -215,7 +215,7 @@ namespace DistanceFieldComputer
             distanceField.UnlockBits(newData);
         }
         //TODO fix memory leak here
-        //TOFO fix brightness offset
+        //TODO fix brightness offset
         private void ComputePartImage(int quarter)
         {
             var point = new Point(-1,-1);
@@ -241,7 +241,7 @@ namespace DistanceFieldComputer
 
             }
         }
-
+        //TODO implement threshhold
         private bool IsPixelBlack(int x, int y)
         {
             if (x < 0 || x > width - 1 || y < 0 || y > height - 1)
@@ -249,6 +249,7 @@ namespace DistanceFieldComputer
 
             return GetPixel(x, y, origValues) < 127;
         }
+
         private bool IsPixelOutOfImage(int x, int y)
         {
             if (x < 0 || x > width - 1 || y < 0 || y > height - 1)
