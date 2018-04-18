@@ -1,0 +1,7 @@
+[package]
+name = "distance_field_v2"
+version = "0.1.0"
+authors = ["TheNumerus <Petr.volf216@gmail.com>"]
+
+[dependencies]
+image = "0.18.0"
