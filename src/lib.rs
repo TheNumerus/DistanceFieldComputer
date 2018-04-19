@@ -1,3 +1,7 @@
+extern crate image;
+
+use image::{DynamicImage, GenericImage, Pixel};
+
 struct Vec3 {
     x: f32,
     y: f32,
@@ -32,4 +36,40 @@ impl Point {
 
 struct Face {
     verts: Vec<Vec3>
+}
+
+impl Face {
+    fn compute_normal(&self) -> Vec3 {
+        // NOT YET IMPLEMENTED
+        panic!("Kuso FUCK OFF")
+    }
+
+    fn distance_to_point(&self, coords: (f32, f32, f32)) -> f32 {
+        // NOT YET IMPLEMENTED
+        panic!("Kuso FUCK OFF")
+    }
+}
+
+fn generate_mesh () {
+
+}
+
+struct Extrema {
+    min: u8,
+    max: u8
+}
+
+fn get_image_extrema(img: &DynamicImage) -> Extrema {
+    let mut e = Extrema{min: 255, max: 0};
+    for pixel in img.pixels() {
+        // only get the red channel, since all images should be monochrome
+        let value = pixel.2.channels4().0;
+        if value > e.max {
+            e.max = value
+        }
+        if value < e.min {
+            e.min = value
+        }
+    }
+    e
 }

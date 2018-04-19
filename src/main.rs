@@ -2,6 +2,7 @@ extern crate image;
 
 use std::fs::File;
 use std::path::PathBuf;
+use std::num::ParseIntError;
 use std::io;
 use std::env;
 use std::process;
@@ -25,9 +26,19 @@ fn main() {
     };
     println!("Image dimensions are {:?}", img.dimensions());
     let mut radius = String::new();
-    println!("Please input search radius (preferably power of two).");
+    println!("Please input search radius (preferably power of two), default is 64.");
     io::stdin().read_line(&mut radius).expect("Failed to read input");
-    let radius: u32 = radius.trim().parse().expect("Not a number");
+    let radius = match radius.trim().parse::<u32>() {
+        Ok(value) => value,/*
+        Err(ref error) if error == ParseIntError => {
+            eprintln!("Setting default value (64).");
+            64
+        },*/
+        Err(_) => {
+            panic!("Not a number")
+        }
+    }; //expect("Not a number");
+    // let radius: u32 =
     // separate image into buffers
     // compute buffer
     // save image
