@@ -1,5 +1,5 @@
 [package]
-name = "distance_field_v2"
+name = "distance_field"
 version = "0.1.0"
 authors = ["TheNumerus <Petr.volf216@gmail.com>"]
 
