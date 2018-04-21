@@ -1,8 +1,9 @@
 extern crate distance_field;
 extern crate image;
 
+use distance_field::extrema::Extrema;
+use distance_field::mesh::Mesh;
 use distance_field::settings;
-use distance_field::{get_image_extrema, Mesh};
 use image::GenericImage;
 use std::env;
 use std::fs::File;
@@ -28,7 +29,7 @@ fn main() {
     println!("Image dimensions are {:?}", img.dimensions());
     let settings = settings::GenSettings::new_from_input();
     println!("Settings: {:?}", settings);
-    let extrema = get_image_extrema(&img);
+    let extrema = Extrema::get_image_extrema(&img);
     println!("Extrema: {:?}", extrema);
     let mesh = Mesh::generate_mesh(&img, &settings);
     mesh.generate_obj();
