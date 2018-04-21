@@ -1,6 +1,7 @@
 extern crate distance_field;
 
-use distance_field::{Vec3, Face};
+use distance_field::vec3::Vec3;
+use distance_field::Face;
 
 #[test]
 fn cross() {
@@ -16,8 +17,10 @@ fn normal() {
     let v1 = Vec3::new((1.0, 0.0, 0.0));
     let v2 = Vec3::new((0.0, 1.0, 0.0));
     let f0 = Face::new(v0, v1, v2);
-    let n = ((100.0 * f0.normal.x).round() / 100.0,
-            (100.0 * f0.normal.y).round() / 100.0,
-            (100.0 * f0.normal.z).round() / 100.0);
+    let n = (
+        (100.0 * f0.normal.x).round() / 100.0,
+        (100.0 * f0.normal.y).round() / 100.0,
+        (100.0 * f0.normal.z).round() / 100.0,
+    );
     assert_eq!((0.58, 0.58, 0.58), n);
 }

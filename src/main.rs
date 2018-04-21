@@ -1,13 +1,13 @@
-extern crate image;
 extern crate distance_field;
+extern crate image;
 
-use std::fs::File;
-use std::path::PathBuf;
-use std::env;
-use std::process;
-use image::GenericImage;
 use distance_field::settings;
 use distance_field::{get_image_extrema, Mesh};
+use image::GenericImage;
+use std::env;
+use std::fs::File;
+use std::path::PathBuf;
+use std::process;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -23,7 +23,7 @@ fn main() {
         Err(error) => {
             eprintln!("Error with opening file {} :, {:?}", input, error);
             process::exit(1);
-        },
+        }
     };
     println!("Image dimensions are {:?}", img.dimensions());
     let settings = settings::GenSettings::new_from_input();
@@ -40,7 +40,7 @@ fn main() {
     match img.save(out_img, image::PNG) {
         Ok(_) => {
             println!("Image saved successfully");
-            },
+        }
         Err(error) => {
             eprintln!("Error with saving file: {}", error);
             process::exit(1);
@@ -51,8 +51,12 @@ fn main() {
 fn get_output_filename(input: &String) -> String {
     let path = PathBuf::from(input);
     let extension = path.extension().unwrap().to_str().unwrap();
-    let file_name =  String::from(path.file_name().unwrap().to_str().unwrap());
+    let file_name = String::from(path.file_name().unwrap().to_str().unwrap());
     let index = file_name.rfind(&extension).unwrap();
-    let file_name = String::from(format!("{}_output.{}", &file_name[0..index-1], &extension));
+    let file_name = String::from(format!(
+        "{}_output.{}",
+        &file_name[0..index - 1],
+        &extension
+    ));
     String::from(path.with_file_name(&file_name).to_str().unwrap())
 }
