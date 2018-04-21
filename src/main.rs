@@ -3,12 +3,11 @@ extern crate distance_field;
 
 use std::fs::File;
 use std::path::PathBuf;
-use std::io;
 use std::env;
 use std::process;
 use image::GenericImage;
 use distance_field::settings;
-use distance_field::{get_image_extrema, generate_mesh};
+use distance_field::{get_image_extrema, Mesh};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -31,8 +30,9 @@ fn main() {
     println!("Settings: {:?}", settings);
     let extrema = get_image_extrema(&img);
     println!("Extrema: {:?}", extrema);
-    let mesh = generate_mesh(&img, &settings);
-    // println!("Mesh data: {:?}", mesh);
+    let mesh = Mesh::generate_mesh(&img, &settings);
+    mesh.generate_obj();
+    println!("Mesh data: {:?}", mesh.faces.iter().count());
     // separate image into buffers
     // compute buffer
     // save image

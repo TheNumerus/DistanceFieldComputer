@@ -13,9 +13,13 @@ pub struct GenSettings {
 impl GenSettings {
     pub fn new_from_input() -> GenSettings{
         let radius = GenSettings::get_radius_input();
+        println!("-------------------------");
         let repeat = GenSettings::get_repeat_input();
+        println!("-------------------------");
         let height_setting = GenSettings::get_height_input();
+        println!("-------------------------");
         let height_mult = GenSettings::get_height_mult();
+        println!("-------------------------");
         GenSettings::new_from_values((radius, repeat, height_setting, height_mult))
     }
 
