@@ -6,7 +6,6 @@ use distance_field::mesh::Mesh;
 use distance_field::settings;
 use image::GenericImage;
 use std::env;
-use std::fs::File;
 use std::path::PathBuf;
 use std::process;
 
@@ -31,14 +30,13 @@ fn main() {
     println!("Settings: {:?}", settings);
     let extrema = Extrema::get_image_extrema(&img);
     println!("Extrema: {:?}", extrema);
-    let mesh = Mesh::generate_mesh(&img, &settings);
-    mesh.generate_obj();
+    let mesh = Mesh::generate(&img, &settings);
+    mesh.export("output.obj");
     println!("Mesh data: {:?}", mesh.faces.iter().count());
     // separate image into buffers
     // compute buffer
     // save image
-    let ref mut out_img = File::create(get_output_filename(input)).unwrap();
-    match img.save(out_img, image::PNG) {
+    match img.save(get_output_filename(input)) {
         Ok(_) => {
             println!("Image saved successfully");
         }

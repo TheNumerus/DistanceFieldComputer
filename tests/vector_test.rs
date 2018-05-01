@@ -1,7 +1,7 @@
 extern crate distance_field;
 
+use distance_field::face::Face;
 use distance_field::vec3::Vec3;
-use distance_field::Face;
 
 #[test]
 fn cross() {

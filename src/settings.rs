@@ -32,6 +32,15 @@ impl GenSettings {
         }
     }
 
+    pub fn new() -> GenSettings {
+        GenSettings {
+            radius: DEF_RADIUS,
+            repeat: ImgRepeat::Repeat,
+            height_setting: CaptureHeight::Generated,
+            img_height_mult: 1.0,
+        }
+    }
+
     fn get_radius_input() -> u32 {
         let mut radius = String::new();
         println!(

@@ -19,19 +19,24 @@ impl Face {
         f
     }
 
-    pub fn compute_normal(&mut self) {
+    fn compute_normal(&mut self) {
         let ac = &self.verts[0] - &self.verts[1];
         let ab = &self.verts[0] - &self.verts[2];
         let norm = ac.cross(&ab).normalized();
         self.normal = norm;
     }
 
-    pub fn compute_center(&mut self) {
+    fn compute_center(&mut self) {
         self.center = Vec3::new((
             (self.verts[0].x + self.verts[1].x + self.verts[2].x) / 3.0,
             (self.verts[0].y + self.verts[1].y + self.verts[2].y) / 3.0,
             (self.verts[0].z + self.verts[1].z + self.verts[2].z) / 3.0,
         ));
+    }
+    
+    pub fn recompute(&mut self) {
+        self.compute_center();
+        self.compute_normal();
     }
 }
 

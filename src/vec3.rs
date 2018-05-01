@@ -1,5 +1,6 @@
 use std::fmt;
-use std::ops::{Add, Sub};
+use std::ops::{Add, Index, Sub};
+use vec4::Vec4;
 
 pub struct Vec3 {
     pub x: f32,
@@ -47,6 +48,10 @@ impl Vec3 {
     pub fn distance_to(self, other: &Vec3) -> f32 {
         (&self - other).len()
     }
+
+    pub fn to_vec4(&self) -> Vec4 {
+        Vec4::new((self.x, self.y, self.z, 1.0))
+    }
 }
 
 impl Clone for Vec3 {
@@ -74,9 +79,28 @@ impl<'a> Sub<&'a Vec3> for &'a Vec3 {
     }
 }
 
+impl Sub for Vec3 {
+    type Output = Vec3;
+    fn sub(self, other: Vec3) -> Vec3 {
+        Vec3::new((self.x - other.x, self.y - other.y, self.z - other.z))
+    }
+}
+
 impl<'a> Add<&'a Vec3> for &'a Vec3 {
     type Output = Vec3;
     fn add(self, other: &'a Vec3) -> Vec3 {
         Vec3::new((self.x + other.x, self.y + other.y, self.z + other.z))
+    }
+}
+
+impl Index<usize> for Vec3 {
+    type Output = f32;
+    fn index(&self, num: usize) -> &f32 {
+        match num {
+            0 => &self.x,
+            1 => &self.y,
+            2 => &self.z,
+            _ => panic!("Invalid index"),
+        }
     }
 }
