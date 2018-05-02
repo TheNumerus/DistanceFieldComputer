@@ -60,6 +60,15 @@ impl Mesh {
         (x, y)
     }
 
+    /// Convert image coorinated to mesh coordinates
+    pub fn mesh_to_image_coords(input: (u32, u32), dim: (u32, u32)) -> (f32, f32) {
+        let x = (input.0 as f32) - 0.5;
+        let y = (dim.1 as f32) + (input.1 as f32) + 0.5;
+        (x, y)
+    }
+
+
+    /// Creates empty mesh
     pub fn empty_copy(other: &Mesh) -> Mesh {
         Mesh {
             faces: Vec::new(),
@@ -70,42 +79,19 @@ impl Mesh {
     /// Flipes mesh data along given axis.
     fn flip(&mut self, axis: (bool, bool))  {
         let mut flipped_faces: Vec<Face> = Vec::new();
-        match axis {
-            (false, false) => (),
-            (false, true) => {
-                let coords = (0.0, self.dimensions.1 as f32);
-                for face in &mut self.faces {
-                    let mut new_face = face.clone();
-                    for vert in &mut new_face.verts {
-                        vert.y = coords.1 - vert.y;
-                    }
-                    face.recompute();
-                    flipped_faces.push(new_face);
+        let coords = (self.dimensions.0 as f32, self.dimensions.1 as f32);
+        for face in &mut self.faces {
+            let mut new_face = face.clone();
+            for vert in &mut new_face.verts {
+                if axis.0 {
+                    vert.x = coords.0 - vert.x;
                 }
-            },
-            (true, false) => {
-                let coords = (self.dimensions.0 as f32, 0.0);
-                for face in &mut self.faces {
-                    let mut new_face = face.clone();
-                    for vert in &mut new_face.verts {
-                        vert.x = coords.0 - vert.x;
-                    }
-                    face.recompute();
-                    flipped_faces.push(new_face);
-                }
-            },
-            (true, true) => {
-                let coords = (self.dimensions.0 as f32, self.dimensions.1 as f32);
-                for face in &mut self.faces {
-                    let mut new_face = face.clone();
-                    for vert in &mut new_face.verts {
-                        vert.x = coords.0 - vert.x;
-                        vert.y = coords.1 - vert.y;
-                    }
-                    face.recompute();
-                    flipped_faces.push(new_face);
+                if axis.1 {
+                    vert.y = coords.1 - vert.y;
                 }
             }
+            face.recompute();
+            flipped_faces.push(new_face);
         }
         self.faces = flipped_faces;
     }
@@ -124,8 +110,10 @@ impl Mesh {
     }
 
     /// Return generated clippped version of the mesh.
-    fn clamp(points: &Vec<Vec3>, axis: MeshClamp) -> Mesh {
-        panic!("Not yet implemented");
+    fn clamp(mesh: &Mesh, axis: MeshClamp) -> Mesh {
+        match 
+        Mesh::empty_copy(mesh)
+        // panic!("Not yet implemented");
     }
 
     /// Merge two meshes together.
@@ -171,7 +159,56 @@ impl Mesh {
                 outer
             }
             ImgRepeat::Clamp => {
-                panic!("Not yet implemented");
+                let mut outer = Mesh::empty_copy(&self);
+                // get corner coordinates
+                // 0---1
+                // |     |
+                // 3---2
+                let mut corners: [f32; 4] = [0.0, 0.0, 0.0, 0.0];
+                for face in self.faces.iter() {
+                    for point in face.verts.iter() {
+                        if point.x == 0.5 && point.y == 0.5 {
+                            corners[3] = point.z;
+                        }
+                        if point.x == self.dimensions.0 as f32 - 0.5 && point.y == 0.5 {
+                            corners[2] = point.z;
+                        }
+                        if point.x == 0.5 && point.y == self.dimensions.1 as f32 - 0.5 {
+                            corners[0] = point.z;
+                        }
+                        if point.x == self.dimensions.0 as f32 - 0.5 && point.y == self.dimensions.1 as f32 - 0.5 {
+                            corners[1] = point.z;
+                        }
+                    }
+                }
+                for xy in MOVES.iter() {
+                    let mut moved: Mesh = Mesh::empty_copy(&self);
+                    // corners
+                    if xy[0] == -1.0 && xy[1] == 1.0 {
+                        moved = Mesh::generate_corner_from_height(self.dimensions, corners[0]);
+                    } else if xy[0] == 1.0 && xy[1] == 1.0 {
+                        moved = Mesh::generate_corner_from_height(self.dimensions, corners[1]);
+                    } else if xy[0] == 1.0 && xy[1] == -1.0 {
+                        moved = Mesh::generate_corner_from_height(self.dimensions, corners[2]);
+                    } else if xy[0] == -1.0 && xy[1] == -1.0 {
+                        moved = Mesh::generate_corner_from_height(self.dimensions, corners[3]);
+                    } else if xy[0] == -1.0 && xy[1] == 0.0 {
+                        moved = Mesh::clamp(self, MeshClamp::Left);
+                    } else if xy[0] == 0.0 && xy[1] == 1.0 {
+                        moved = Mesh::clamp(self, MeshClamp::Up);
+                    } else if xy[0] == 1.0 && xy[1] == 0.0 {
+                        moved = Mesh::clamp(self, MeshClamp::Right);
+                    } else if xy[0] == 0.0 && xy[1] == -1.0 {
+                        moved = Mesh::clamp(self, MeshClamp::Down);
+                    }
+                    moved.translate(Vec3::new((
+                        self.dimensions.0 as f32 * xy[0],
+                        self.dimensions.1 as f32 * xy[1],
+                        0.0,
+                    )));
+                    outer.append_data(&mut moved);
+                }
+                outer
             }
             ImgRepeat::Mirror => {
                 let mut outer = Mesh::empty_copy(&self);
@@ -207,6 +244,47 @@ impl Mesh {
     /// Recompute mesh normals
     fn recompute_normals(&mut self) {
         // panic!("Not yet implemented");
+    }
+
+    /// Generate corner mesh
+    fn generate_corner_from_height(dim: (u32, u32), height: f32) -> Mesh {
+        let bounds = (dim.0 - 1, dim.1 - 1);
+        // generate main part
+        let mut faces: Vec<Face> = Vec::new();
+        for y in 0..(bounds.1) {
+            for x in 0..(bounds.0) {
+                // image axis y is positive on the way down, so we flip it
+                let coords = Mesh::image_to_mesh_coords((x, y), dim);
+                let point0 = Vec3::new((
+                    coords.0,
+                    coords.1,
+                    height,
+                ));
+                let point1 = Vec3::new((
+                    coords.0,
+                    coords.1 - 1.0,
+                    height,
+                ));
+                let point2 = Vec3::new((
+                    coords.0 + 1.0,
+                    coords.1,
+                    height,
+                ));
+                let point3 = Vec3::new((
+                    coords.0 + 1.0,
+                    coords.1 - 1.0,
+                    height,
+                ));
+                let face0 = Face::new(point0, point1.clone(), point2.clone());
+                let face1 = Face::new(point2, point1, point3);
+                faces.push(face0);
+                faces.push(face1);
+            }
+        }
+        Mesh {
+            faces,
+            dimensions: dim,
+        }
     }
 
     /// Generate mesh data from given image.
