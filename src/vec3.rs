@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::fmt;
 use std::ops::{Add, Index, Sub};
 use vec4::Vec4;
@@ -51,6 +52,24 @@ impl Vec3 {
 
     pub fn to_vec4(&self) -> Vec4 {
         Vec4::new((self.x, self.y, self.z, 1.0))
+    }
+
+    pub fn cmp_x(&self, other: &Vec3) -> Ordering {
+        if self.x > other.x {
+                return Ordering::Greater;
+        } else if self.x == other.x {
+            return Ordering::Equal;
+        };
+        return Ordering::Less;
+    }
+
+    pub fn cmp_y(&self, other: &Vec3) -> Ordering {
+        if self.y > other.y {
+                return Ordering::Greater;
+        } else if self.y == other.y {
+            return Ordering::Equal;
+        };
+        return Ordering::Less;
     }
 }
 

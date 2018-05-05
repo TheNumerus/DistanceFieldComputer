@@ -98,21 +98,95 @@ impl Mesh {
 
     /// Moves mesh data by given cooridnates.
     fn translate(&mut self, coords: Vec3) {
-        let mut faces: Vec<Face> = Vec::new();
-        for face in self.faces.iter() {
-            faces.push(Face::new(
-                &face.verts[0] + &coords,
-                &face.verts[1] + &coords,
-                &face.verts[2] + &coords,
-            ))
+        for face in self.faces.iter_mut() {
+            for vert in face.verts.iter_mut() {
+                vert.x = vert.x + coords.x;
+                vert.y = vert.y + coords.y;
+                vert.z = vert.z + coords.z;
+            }
+            face.recompute();
         }
-        self.faces = faces;
     }
 
     /// Return generated clippped version of the mesh.
     fn clamp(mesh: &Mesh, axis: MeshClamp) -> Mesh {
-        match 
-        Mesh::empty_copy(mesh)
+        let mut clamped = Mesh::empty_copy(mesh);
+        let mut sub_vec: Vec<Vec3> = Vec::new();
+        let border = (mesh.dimensions.0 as f32 - 0.5, mesh.dimensions.1 as f32 - 0.5);
+        // get points
+        for face in mesh.faces.iter() {
+            for point in face.verts.iter() {
+                match axis {
+                    MeshClamp::Left => {
+                        if point.x == 0.5 && !sub_vec.contains(&point) {
+                            sub_vec.push(point.clone());
+                        }
+                    },
+                    MeshClamp::Up => {
+                        if point.y == border.1 && !sub_vec.contains(&point) {
+                            sub_vec.push(point.clone());
+                        }
+                    },
+                    MeshClamp::Right => {
+                        if point.x == border.0 && !sub_vec.contains(&point) {
+                            sub_vec.push(point.clone());
+                        }
+                    },
+                    MeshClamp::Down => {
+                        if point.y == 0.5 && !sub_vec.contains(&point) {
+                            sub_vec.push(point.clone());
+                        }
+                    }
+                }
+            }
+        };
+        // sort points
+        sub_vec.sort_unstable_by(|a, b| a.cmp_x(b));
+        // generate mesh
+        let mut faces: Vec<Face> = Vec::new();
+        for y in 0..(mesh.dimensions.1 - 1) {
+            for x in 0..(mesh.dimensions.0 - 1) {
+                let point0 = Vec3::new((
+                    x as f32 + 0.5,
+                    y as f32 + 0.5,
+                    sub_vec[x as usize].z,
+                ));
+                let point1 = Vec3::new((
+                    x as f32 + 0.5,
+                    y as f32 + 1.5,
+                    sub_vec[x as usize].z,
+                ));
+                let point2 = Vec3::new((
+                    x as f32 + 1.5,
+                    y as f32 + 0.5,
+                    sub_vec[x as usize + 1].z,
+                ));
+                let point3 = Vec3::new((
+                    x as f32 + 1.5,
+                    y as f32 + 1.5,
+                    sub_vec[x as usize + 1].z,
+                ));
+                let face0 = Face::new(point0, point1.clone(), point2.clone());
+                let face1 = Face::new(point2, point1, point3);
+                faces.push(face0);
+                faces.push(face1);
+            }
+        }
+        clamped.faces = faces;
+        // rotate mesh
+        match axis {
+            MeshClamp::Left | MeshClamp::Right => {
+                for face in clamped.faces.iter_mut() {
+                    for point in face.verts.iter_mut() {
+                        let temp = point.x;
+                        point.x = point.y;
+                        point.y = mesh.dimensions.1 as f32 - temp;
+                    }
+                }
+            },
+            MeshClamp::Up | MeshClamp::Down => (),
+        };
+        clamped
         // panic!("Not yet implemented");
     }
 
