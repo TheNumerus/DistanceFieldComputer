@@ -142,10 +142,16 @@ impl Mesh {
         };
         // sort points
         sub_vec.sort_unstable_by(|a, b| a.cmp_x(b));
+        // flip coords, do we avoid out of bounds error
+        let mut dim = (mesh.dimensions.1 - 1, mesh.dimensions.0 - 1);
+        match axis {
+             MeshClamp::Left | MeshClamp::Right => dim = (mesh.dimensions.0 - 1, mesh.dimensions.1 - 1),
+             _ => ()
+        }
         // generate mesh
         let mut faces: Vec<Face> = Vec::new();
-        for y in 0..(mesh.dimensions.1 - 1) {
-            for x in 0..(mesh.dimensions.0 - 1) {
+        for y in 0..(dim.0) {
+            for x in 0..(dim.1) {
                 let point0 = Vec3::new((
                     x as f32 + 0.5,
                     y as f32 + 0.5,
@@ -187,7 +193,6 @@ impl Mesh {
             MeshClamp::Up | MeshClamp::Down => (),
         };
         clamped
-        // panic!("Not yet implemented");
     }
 
     /// Merge two meshes together.
@@ -418,6 +423,7 @@ impl Clone for Mesh {
     }
 }
 
+#[derive(Debug)]
 pub enum MeshClamp {
     Up,
     Down,
