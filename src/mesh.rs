@@ -2,8 +2,10 @@ use face::Face;
 use image::{DynamicImage, GenericImage, Pixel};
 use settings::{GenSettings, ImgRepeat};
 use std::f32;
+use std::cell::RefCell;
 use std::fs::File;
-use std::io::Write;
+use std::io::{Write};
+use std::rc::Rc;
 use vec3::Vec3;
 
 const MOVES: [[f32; 2]; 8] = [
@@ -16,11 +18,15 @@ const MOVES: [[f32; 2]; 8] = [
     [0.0, -1.0],
     [-1.0, -1.0],
 ];
+const EXPORT_SCALE:f32 = 1.0/100.0;
+
 
 #[derive(Debug)]
 pub struct Mesh {
     pub faces: Vec<Face>,
     dimensions: (u32, u32),
+    ext_dim: (usize, usize),
+    pub verts: Vec<Rc<RefCell<Vec3>>>,
 }
 
 impl Mesh {
@@ -29,28 +35,42 @@ impl Mesh {
         let mut middle = Mesh::generate_mesh_from_img(img, settings);
         println!("Middle part generated");
         middle.compute_out_of_range_mesh(settings);
+        middle.compute_faces();
         middle
     }
 
-    // very inefficient for now
-    // has extreme redundancy
     /// Export mesh data in obj. format.
     pub fn export(&self, filename: &str) {
         let mut file = File::create(filename).unwrap();
-        for face in self.faces.iter() {
-            for point in face.verts.iter() {
-                file.write_all(format!("v {} {} {}\n", point.x, point.y, point.z).as_bytes())
-                    .unwrap();
-            }
+        let mut data = String::from("");
+        for point in self.verts.iter() {
+            let p = point.borrow();
+            data.push_str(&format!("v {} {} {}\n", p.x * EXPORT_SCALE, p.y * EXPORT_SCALE, p.z * EXPORT_SCALE));
         }
         println!("All points written.");
-        let mut i = 1;
-        for _ in &self.faces {
-            file.write_all(format!("f {} {} {}\n", i + 2, i, i + 1).as_bytes())
-                .unwrap();
-            i = i + 3;
+        for (i, _face) in self.faces.iter().enumerate() {
+            let row = (i/2) / self.ext_dim.0;
+            let pos_in_row = i - row * self.ext_dim.0 * 2;
+            match i % 2 {
+                0 => {
+                     data.push_str(&format!("f {} {} {}\n",
+                        pos_in_row/2 + (row + 1) * (self.ext_dim.0 + 1) + 2,
+                        pos_in_row/2 + (row + 1) * (self.ext_dim.0 + 1) + 1,
+                        pos_in_row/2 + row * (self.ext_dim.0 + 1) + 1,
+                        ));
+                },
+                1 => {
+                     data.push_str(&format!("f {} {} {}\n",
+                        pos_in_row/2 + (row + 1) * (self.ext_dim.0 + 1) + 2,
+                        pos_in_row/2 + row * (self.ext_dim.0 + 1) + 1,
+                        pos_in_row/2 + row * (self.ext_dim.0 + 1) + 2
+                        ));
+                },
+                _ => ()
+            };
         }
         println!("All faces written.");
+        file.write_all(data.as_bytes()).unwrap();
     }
 
     /// Convert image coorinated to mesh coordinates
@@ -67,129 +87,108 @@ impl Mesh {
         (x, y)
     }
 
-
     /// Creates empty mesh
     pub fn empty_copy(other: &Mesh) -> Mesh {
         Mesh {
             faces: Vec::new(),
             dimensions: other.dimensions,
+            ext_dim: other.ext_dim,
+            verts: Vec::new(),
         }
     }
 
     /// Flipes mesh data along given axis.
-    fn flip(&mut self, axis: (bool, bool))  {
-        let mut flipped_faces: Vec<Face> = Vec::new();
+    fn flip(&mut self, axis: (bool, bool)) {
         let coords = (self.dimensions.0 as f32, self.dimensions.1 as f32);
-        for face in &mut self.faces {
-            let mut new_face = face.clone();
-            for vert in &mut new_face.verts {
-                if axis.0 {
-                    vert.x = coords.0 - vert.x;
-                }
-                if axis.1 {
-                    vert.y = coords.1 - vert.y;
-                }
+        for vert in self.verts.iter_mut() {
+            let mut v = vert.borrow_mut();
+            if axis.0 {
+                v.x = coords.0 - v.x;
             }
-            face.recompute();
-            flipped_faces.push(new_face);
+            if axis.1 {
+                v.y = coords.1 - v.y;
+            }
         }
-        self.faces = flipped_faces;
     }
 
     /// Moves mesh data by given cooridnates.
     fn translate(&mut self, coords: Vec3) {
-        for face in self.faces.iter_mut() {
-            for vert in face.verts.iter_mut() {
-                vert.x = vert.x + coords.x;
-                vert.y = vert.y + coords.y;
-                vert.z = vert.z + coords.z;
-            }
-            face.recompute();
+        for vert in self.verts.iter_mut() {
+            let mut v = vert.borrow_mut();
+            v.x = v.x + coords.x;
+            v.y = v.y + coords.y;
+            v.z = v.z + coords.z;
         }
     }
 
     /// Return generated clippped version of the mesh.
     fn clamp(mesh: &Mesh, axis: MeshClamp) -> Mesh {
         let mut clamped = Mesh::empty_copy(mesh);
-        let mut sub_vec: Vec<Vec3> = Vec::new();
-        let border = (mesh.dimensions.0 as f32 - 0.5, mesh.dimensions.1 as f32 - 0.5);
+        let mut sub_vec: Vec<Rc<RefCell<Vec3>>> = Vec::new();
+        let border = (
+            mesh.dimensions.0 as f32 - 0.5,
+            mesh.dimensions.1 as f32 - 0.5,
+        );
         // get points
-        for face in mesh.faces.iter() {
-            for point in face.verts.iter() {
-                match axis {
-                    MeshClamp::Left => {
-                        if point.x == 0.5 && !sub_vec.contains(&point) {
-                            sub_vec.push(point.clone());
-                        }
-                    },
-                    MeshClamp::Up => {
-                        if point.y == border.1 && !sub_vec.contains(&point) {
-                            sub_vec.push(point.clone());
-                        }
-                    },
-                    MeshClamp::Right => {
-                        if point.x == border.0 && !sub_vec.contains(&point) {
-                            sub_vec.push(point.clone());
-                        }
-                    },
-                    MeshClamp::Down => {
-                        if point.y == 0.5 && !sub_vec.contains(&point) {
-                            sub_vec.push(point.clone());
-                        }
+        for point in mesh.verts.iter() {
+            let p = point.borrow();
+            match axis {
+                MeshClamp::Left => {
+                    if p.x == 0.5 && !sub_vec.contains(&point) {
+                        sub_vec.push(Rc::clone(point));
+                    }
+                }
+                MeshClamp::Up => {
+                    if p.y == border.1 && !sub_vec.contains(&point) {
+                        sub_vec.push(Rc::clone(point));
+                    }
+                }
+                MeshClamp::Right => {
+                    if p.x == border.0 && !sub_vec.contains(&point) {
+                        sub_vec.push(Rc::clone(point));
+                    }
+                }
+                MeshClamp::Down => {
+                    if p.y == 0.5 && !sub_vec.contains(&point) {
+                        sub_vec.push(Rc::clone(point));
                     }
                 }
             }
-        };
+        }
         // sort points
-        sub_vec.sort_unstable_by(|a, b| a.cmp_x(b));
+        sub_vec.sort_unstable_by(|a, b| {
+            let a_borrowed = a.borrow();
+            let b_borrowed = b.borrow();
+            a_borrowed.cmp_x(&b_borrowed)
+        });
         // flip coords, do we avoid out of bounds error
-        let mut dim = (mesh.dimensions.1 - 1, mesh.dimensions.0 - 1);
+        let mut dim = (mesh.dimensions.1, mesh.dimensions.0);
         match axis {
-             MeshClamp::Left | MeshClamp::Right => dim = (mesh.dimensions.0 - 1, mesh.dimensions.1 - 1),
-             _ => ()
+            MeshClamp::Left | MeshClamp::Right => dim = (mesh.dimensions.0, mesh.dimensions.1),
+            _ => (),
         }
         // generate mesh
-        let mut faces: Vec<Face> = Vec::new();
+        let mut verts: Vec<Rc<RefCell<Vec3>>> = Vec::new();
         for y in 0..(dim.0) {
             for x in 0..(dim.1) {
-                let point0 = Vec3::new((
+                verts.push(Rc::new(RefCell::new(Vec3::new((
                     x as f32 + 0.5,
                     y as f32 + 0.5,
-                    sub_vec[x as usize].z,
-                ));
-                let point1 = Vec3::new((
-                    x as f32 + 0.5,
-                    y as f32 + 1.5,
-                    sub_vec[x as usize].z,
-                ));
-                let point2 = Vec3::new((
-                    x as f32 + 1.5,
-                    y as f32 + 0.5,
-                    sub_vec[x as usize + 1].z,
-                ));
-                let point3 = Vec3::new((
-                    x as f32 + 1.5,
-                    y as f32 + 1.5,
-                    sub_vec[x as usize + 1].z,
-                ));
-                let face0 = Face::new(point0, point1.clone(), point2.clone());
-                let face1 = Face::new(point2, point1, point3);
-                faces.push(face0);
-                faces.push(face1);
+                    sub_vec[x as usize].borrow().z,
+                )))));
             }
         }
-        clamped.faces = faces;
+        clamped.verts = verts;
         // rotate mesh
         match axis {
             MeshClamp::Left | MeshClamp::Right => {
-                for face in clamped.faces.iter_mut() {
-                    for point in face.verts.iter_mut() {
-                        let temp = point.x;
-                        point.x = point.y;
-                        point.y = mesh.dimensions.1 as f32 - temp;
-                    }
+                for point in clamped.verts.iter_mut() {
+                    let mut p = point.borrow_mut();
+                    let temp = p.x;
+                    p.x = p.y;
+                    p.y = mesh.dimensions.1 as f32 - temp;
                 }
-            },
+            }
             MeshClamp::Up | MeshClamp::Down => (),
         };
         clamped
@@ -198,27 +197,22 @@ impl Mesh {
     /// Merge two meshes together.
     fn append_data(&mut self, other: &mut Mesh) {
         self.faces.append(&mut other.faces);
-    }
-
-    /// Generate border triangles.
-    fn compute_border_faces(&mut self, settings: &ImgRepeat) {
-        // panic!("Not yet implemented");
+        self.verts.append(&mut other.verts);
     }
 
     /// Remove unaccessible data from mesh.
-    fn clean_far_faces(&mut self, settings: &GenSettings) {
-        let mut faces: Vec<Face> = Vec::new();
+    fn clean_far_verts(&mut self, settings: &GenSettings) {
+        let mut verts: Vec<Rc<RefCell<Vec3>>> = Vec::new();
         let rad = settings.radius as f32;
-        for face in self.faces.iter() {
-            let x = face.center.x < ((self.dimensions.0 as f32) + 10.0 + rad)
-                && face.center.x > -(rad + 10.0);
-            let y = face.center.y < ((self.dimensions.1 as f32) + 10.0 + rad)
-                && face.center.y > -(rad + 10.0);
+        for vert in self.verts.iter() {
+            let v = vert.borrow();
+            let x = v.x < ((self.dimensions.0 as f32) + 10.0 + rad) && v.x > -(rad + 10.0);
+            let y = v.y < ((self.dimensions.1 as f32) + 10.0 + rad) && v.y > -(rad + 10.0);
             if x && y {
-                faces.push(face.clone());
+                verts.push(Rc::clone(vert));
             }
         }
-        self.faces = faces;
+        self.verts = verts;
     }
 
     /// Generate mesh data out of given image frame.
@@ -240,24 +234,24 @@ impl Mesh {
             ImgRepeat::Clamp => {
                 let mut outer = Mesh::empty_copy(&self);
                 // get corner coordinates
-                // 0---1
-                // |     |
-                // 3---2
+                // 0───1
+                // │   │
+                // 3───2
                 let mut corners: [f32; 4] = [0.0, 0.0, 0.0, 0.0];
-                for face in self.faces.iter() {
-                    for point in face.verts.iter() {
-                        if point.x == 0.5 && point.y == 0.5 {
-                            corners[3] = point.z;
-                        }
-                        if point.x == self.dimensions.0 as f32 - 0.5 && point.y == 0.5 {
-                            corners[2] = point.z;
-                        }
-                        if point.x == 0.5 && point.y == self.dimensions.1 as f32 - 0.5 {
-                            corners[0] = point.z;
-                        }
-                        if point.x == self.dimensions.0 as f32 - 0.5 && point.y == self.dimensions.1 as f32 - 0.5 {
-                            corners[1] = point.z;
-                        }
+                let borders = (
+                    self.dimensions.0 as f32 - 0.5,
+                    self.dimensions.1 as f32 - 0.5,
+                );
+                for point in self.verts.iter() {
+                    let p = point.borrow();
+                    if p.x == 0.5 && p.y == 0.5 {
+                        corners[3] = p.z;
+                    } else if p.x == borders.0 && p.y == 0.5 {
+                        corners[2] = p.z;
+                    } else if p.x == 0.5 && p.y == borders.1 {
+                        corners[0] = p.z;
+                    } else if p.x == borders.0 && p.y == borders.1 {
+                        corners[1] = p.z;
                     }
                 }
                 for xy in MOVES.iter() {
@@ -311,100 +305,100 @@ impl Mesh {
             }
         };
         println!("Out of range parts generated");
-        outer_mesh.compute_border_faces(&settings.repeat);
-        println!("Border faces generated");
-        outer_mesh.clean_far_faces(&settings);
-        println!("Far faces cleaned");
-        outer_mesh.recompute_normals();
-        println!("Normals recomputed");
+        outer_mesh.clean_far_verts(&settings);
+        println!("Far verts cleaned");
         self.append_data(&mut outer_mesh);
     }
 
-    /// Recompute mesh normals
-    fn recompute_normals(&mut self) {
-        // panic!("Not yet implemented");
+    /// Computes faces for whole mesh with good orentation
+    fn compute_faces(&mut self) {
+        // get maximal coordinates
+        // ┌─1─┐ 
+        // 0   2 --->
+        // └─3─┘ ------>
+        let mut coords: [f32; 4] = [0.0, 0.0, 0.0, 0.0];
+        for point in self.verts.iter() {
+            let p = point.borrow();
+            if p.x < coords[0] {
+                coords[0] = p.x;
+            } else if p.x > coords[2] {
+                coords[2] = p.x;
+            } else if p.y > coords[1] {
+                coords[1] = p.y;
+            } else if p.y < coords[3] {
+                coords[3] = p.y;
+            }
+        }
+        println!("{:?}", coords);
+        let bounds = ((coords[2] - coords[0]) as usize, (coords[1] - coords[3]) as usize);
+        // sort those points
+        self.verts.sort_unstable_by(|a, b| {
+            let a_borrowed = a.borrow();
+            let b_borrowed = b.borrow();
+            a_borrowed.cmp_xy(&b_borrowed)
+        });
+        // compute faces
+        let mut faces: Vec<Face> = Vec::new();
+        for x in 0..bounds.0 {
+            for y in 0..bounds.1 {
+                let lower_i = y * bounds.0 + x;
+                let upper_i = (y + 1) * bounds.0 + x;
+                faces.push(Face::new(
+                    Rc::clone(&self.verts[upper_i + 1]),
+                    Rc::clone(&self.verts[upper_i]),
+                    Rc::clone(&self.verts[lower_i])
+                ));
+                faces.push(Face::new(
+                    Rc::clone(&self.verts[upper_i + 1]),
+                    Rc::clone(&self.verts[lower_i]),
+                    Rc::clone(&self.verts[lower_i + 1])
+                ));
+            }
+        }
+        self.faces = faces;
+        self.ext_dim = bounds;
     }
 
     /// Generate corner mesh
     fn generate_corner_from_height(dim: (u32, u32), height: f32) -> Mesh {
-        let bounds = (dim.0 - 1, dim.1 - 1);
         // generate main part
-        let mut faces: Vec<Face> = Vec::new();
-        for y in 0..(bounds.1) {
-            for x in 0..(bounds.0) {
+        let mut verts: Vec<Rc<RefCell<Vec3>>> = Vec::new();
+        for y in 0..(dim.1) {
+            for x in 0..(dim.0) {
                 // image axis y is positive on the way down, so we flip it
                 let coords = Mesh::image_to_mesh_coords((x, y), dim);
-                let point0 = Vec3::new((
-                    coords.0,
-                    coords.1,
-                    height,
-                ));
-                let point1 = Vec3::new((
-                    coords.0,
-                    coords.1 - 1.0,
-                    height,
-                ));
-                let point2 = Vec3::new((
-                    coords.0 + 1.0,
-                    coords.1,
-                    height,
-                ));
-                let point3 = Vec3::new((
-                    coords.0 + 1.0,
-                    coords.1 - 1.0,
-                    height,
-                ));
-                let face0 = Face::new(point0, point1.clone(), point2.clone());
-                let face1 = Face::new(point2, point1, point3);
-                faces.push(face0);
-                faces.push(face1);
+                verts.push(Rc::new(RefCell::new(Vec3::new((coords.0, coords.1, height)))));
             }
         }
         Mesh {
-            faces,
+            faces: Vec::new(),
             dimensions: dim,
+            ext_dim: (dim.0 as usize + 1, dim.1 as usize + 1),
+            verts: verts,
         }
     }
 
     /// Generate mesh data from given image.
     fn generate_mesh_from_img(img: &DynamicImage, settings: &GenSettings) -> Mesh {
         let dim = img.dimensions();
-        let bounds = (dim.0 - 1, dim.1 - 1);
         // generate main part
-        let mut faces: Vec<Face> = Vec::new();
-        for y in 0..(bounds.1) {
-            for x in 0..(bounds.0) {
+        let mut verts: Vec<Rc<RefCell<Vec3>>> = Vec::new();
+        for y in 0..(dim.1) {
+            for x in 0..(dim.0) {
                 // image axis y is positive on the way down, so we flip it
                 let coords = Mesh::image_to_mesh_coords((x, y), dim);
-                let point0 = Vec3::new((
+                verts.push(Rc::new(RefCell::new(Vec3::new((
                     coords.0,
                     coords.1,
                     Mesh::compute_height(img.get_pixel(x, y).channels()[0], &settings),
-                ));
-                let point1 = Vec3::new((
-                    coords.0,
-                    coords.1 - 1.0,
-                    Mesh::compute_height(img.get_pixel(x, y + 1).channels()[0], &settings),
-                ));
-                let point2 = Vec3::new((
-                    coords.0 + 1.0,
-                    coords.1,
-                    Mesh::compute_height(img.get_pixel(x + 1, y).channels()[0], &settings),
-                ));
-                let point3 = Vec3::new((
-                    coords.0 + 1.0,
-                    coords.1 - 1.0,
-                    Mesh::compute_height(img.get_pixel(x + 1, y + 1).channels()[0], &settings),
-                ));
-                let face0 = Face::new(point0, point1.clone(), point2.clone());
-                let face1 = Face::new(point2, point1, point3);
-                faces.push(face0);
-                faces.push(face1);
+                )))));
             }
         }
         Mesh {
-            faces,
+            faces: Vec::new(),
             dimensions: dim,
+            ext_dim: (dim.0 as usize, dim.1 as usize),
+            verts: verts,
         }
     }
 
@@ -415,10 +409,16 @@ impl Mesh {
 }
 
 impl Clone for Mesh {
-    fn clone(&self) -> Mesh {
+    fn clone(&self) -> Mesh{
+        let mut verts: Vec<Rc<RefCell<Vec3>>> = Vec::new();
+        for vert in self.verts.iter() {
+            verts.push(Rc::new(RefCell::new(vert.borrow().clone())));
+        }
         Mesh {
             faces: self.faces.clone(),
             dimensions: self.dimensions,
+            ext_dim: self.ext_dim,
+            verts: verts,
         }
     }
 }

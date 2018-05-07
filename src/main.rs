@@ -8,7 +8,7 @@ use image::GenericImage;
 use std::env;
 use std::path::PathBuf;
 use std::process;
-use std::time::{Instant};
+use std::time::Instant;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -34,12 +34,22 @@ fn main() {
     let now = Instant::now();
     let mesh = Mesh::generate(&img, &settings);
     let time = now.elapsed();
-    println!("Mesh generated in {}", time.as_secs() as f64 + time.subsec_nanos() as f64 * 1e-9);
+    println!(
+        "Mesh generated in {}",
+        time.as_secs() as f64 + time.subsec_nanos() as f64 * 1e-9
+    );
     let now = Instant::now();
     mesh.export("output.obj");
     let time = now.elapsed();
-    println!("Mesh exported in {}", time.as_secs() as f64 + time.subsec_nanos() as f64 * 1e-9);
-    println!("Mesh data: {:?}", mesh.faces.iter().count());
+    println!(
+        "Mesh exported in {}",
+        time.as_secs() as f64 + time.subsec_nanos() as f64 * 1e-9
+    );
+    println!(
+        "Faces: {:?}, Verts: {:?}",
+        mesh.faces.iter().count(),
+        mesh.verts.iter().count()
+    );
     // separate image into buffers
     // compute buffer
     // save image

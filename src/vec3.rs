@@ -56,7 +56,7 @@ impl Vec3 {
 
     pub fn cmp_x(&self, other: &Vec3) -> Ordering {
         if self.x > other.x {
-                return Ordering::Greater;
+            return Ordering::Greater;
         } else if self.x == other.x {
             return Ordering::Equal;
         };
@@ -65,11 +65,29 @@ impl Vec3 {
 
     pub fn cmp_y(&self, other: &Vec3) -> Ordering {
         if self.y > other.y {
-                return Ordering::Greater;
+            return Ordering::Greater;
         } else if self.y == other.y {
             return Ordering::Equal;
         };
         return Ordering::Less;
+    }
+
+    pub fn cmp_xy(&self, other: &Vec3) -> Ordering {
+        if self.y > other.y {
+            return Ordering::Greater;
+        } else if self.y == other.y {
+            if self.x > other.x {
+                return Ordering::Greater;
+            } else if self.x == other.x {
+                return Ordering::Equal;
+            };
+            return Ordering::Less;
+        };
+        return Ordering::Less;
+    }
+    
+    pub fn delta(&self, other: &Vec3) -> Vec3 {
+        Vec3::new((self.x - other.x, self.y - other.y, self.z - other.z))
     }
 }
 
@@ -91,9 +109,9 @@ impl PartialEq for Vec3 {
     }
 }
 
-impl<'a> Sub<&'a Vec3> for &'a Vec3 {
+impl<'a, 'b> Sub<&'b Vec3> for &'a Vec3 {
     type Output = Vec3;
-    fn sub(self, other: &'a Vec3) -> Vec3 {
+    fn sub(self, other: &'b Vec3) -> Vec3 {
         Vec3::new((self.x - other.x, self.y - other.y, self.z - other.z))
     }
 }
@@ -105,9 +123,9 @@ impl Sub for Vec3 {
     }
 }
 
-impl<'a> Add<&'a Vec3> for &'a Vec3 {
+impl<'a, 'b> Add<&'b Vec3> for &'a Vec3 {
     type Output = Vec3;
-    fn add(self, other: &'a Vec3) -> Vec3 {
+    fn add(self, other: &'b Vec3) -> Vec3 {
         Vec3::new((self.x + other.x, self.y + other.y, self.z + other.z))
     }
 }
