@@ -122,7 +122,7 @@ impl Mesh {
     }
 
     /// Return generated clippped version of the mesh.
-    fn clamp(mesh: &Mesh, axis: MeshClamp) -> Mesh {
+    fn clamp(mesh: &Mesh, axis: MeshClamp, settings: &GenSettings) -> Mesh {
         let mut clamped = Mesh::empty_copy(mesh);
         let mut sub_vec: Vec<Rc<RefCell<Vec3>>> = Vec::new();
         let border = (
@@ -162,9 +162,9 @@ impl Mesh {
             a_borrowed.cmp_x(&b_borrowed)
         });
         // flip coords, do we avoid out of bounds error
-        let mut dim = (mesh.dimensions.1, mesh.dimensions.0);
+        let mut dim = (settings.radius + 10, mesh.dimensions.0);
         match axis {
-            MeshClamp::Left | MeshClamp::Right => dim = (mesh.dimensions.0, mesh.dimensions.1),
+            MeshClamp::Left | MeshClamp::Right => dim = (settings.radius + 10, mesh.dimensions.1),
             _ => (),
         }
         // generate mesh
@@ -179,9 +179,17 @@ impl Mesh {
             }
         }
         clamped.verts = verts;
-        // rotate mesh
+        // rotate and move mesh
         match axis {
-            MeshClamp::Left | MeshClamp::Right => {
+            MeshClamp::Left => {
+                for point in clamped.verts.iter_mut() {
+                    let mut p = point.borrow_mut();
+                    let temp = p.x;
+                    p.x = p.y + (mesh.dimensions.0 - (settings.radius + 10)) as f32;
+                    p.y = mesh.dimensions.1 as f32 - temp;
+                }
+            },
+            MeshClamp::Right => {
                 for point in clamped.verts.iter_mut() {
                     let mut p = point.borrow_mut();
                     let temp = p.x;
@@ -189,7 +197,13 @@ impl Mesh {
                     p.y = mesh.dimensions.1 as f32 - temp;
                 }
             }
-            MeshClamp::Up | MeshClamp::Down => (),
+            MeshClamp::Up => (),
+            MeshClamp::Down => {
+                for point in clamped.verts.iter_mut() {
+                    let mut p = point.borrow_mut();
+                    p.y = p.y + (mesh.dimensions.1 - (settings.radius + 10)) as f32;
+                }
+            },
         };
         clamped
     }
@@ -258,21 +272,21 @@ impl Mesh {
                     let mut moved: Mesh = Mesh::empty_copy(&self);
                     // corners
                     if xy[0] == -1.0 && xy[1] == 1.0 {
-                        moved = Mesh::generate_corner_from_height(self.dimensions, corners[0]);
+                        moved = Mesh::generate_corner_from_height(self.dimensions, corners[0], &settings, CornerClamp::LeftUp);
                     } else if xy[0] == 1.0 && xy[1] == 1.0 {
-                        moved = Mesh::generate_corner_from_height(self.dimensions, corners[1]);
+                        moved = Mesh::generate_corner_from_height(self.dimensions, corners[1], &settings, CornerClamp::RightUp);
                     } else if xy[0] == 1.0 && xy[1] == -1.0 {
-                        moved = Mesh::generate_corner_from_height(self.dimensions, corners[2]);
+                        moved = Mesh::generate_corner_from_height(self.dimensions, corners[2], &settings, CornerClamp::RightDown);
                     } else if xy[0] == -1.0 && xy[1] == -1.0 {
-                        moved = Mesh::generate_corner_from_height(self.dimensions, corners[3]);
+                        moved = Mesh::generate_corner_from_height(self.dimensions, corners[3], &settings, CornerClamp::LeftDown);
                     } else if xy[0] == -1.0 && xy[1] == 0.0 {
-                        moved = Mesh::clamp(self, MeshClamp::Left);
+                        moved = Mesh::clamp(self, MeshClamp::Left, &settings);
                     } else if xy[0] == 0.0 && xy[1] == 1.0 {
-                        moved = Mesh::clamp(self, MeshClamp::Up);
+                        moved = Mesh::clamp(self, MeshClamp::Up, &settings);
                     } else if xy[0] == 1.0 && xy[1] == 0.0 {
-                        moved = Mesh::clamp(self, MeshClamp::Right);
+                        moved = Mesh::clamp(self, MeshClamp::Right, &settings);
                     } else if xy[0] == 0.0 && xy[1] == -1.0 {
-                        moved = Mesh::clamp(self, MeshClamp::Down);
+                        moved = Mesh::clamp(self, MeshClamp::Down, &settings);
                     }
                     moved.translate(Vec3::new((
                         self.dimensions.0 as f32 * xy[0],
@@ -305,8 +319,13 @@ impl Mesh {
             }
         };
         println!("Out of range parts generated");
-        outer_mesh.clean_far_verts(&settings);
-        println!("Far verts cleaned");
+        match settings.repeat {
+            ImgRepeat::Clamp => (),
+            _ => {
+                outer_mesh.clean_far_verts(&settings);
+                println!("Far verts cleaned");
+            }
+        };
         self.append_data(&mut outer_mesh);
     }
 
@@ -360,16 +379,39 @@ impl Mesh {
     }
 
     /// Generate corner mesh
-    fn generate_corner_from_height(dim: (u32, u32), height: f32) -> Mesh {
+    fn generate_corner_from_height(dim: (u32, u32), height: f32, settings: &GenSettings, corner: CornerClamp) -> Mesh {
         // generate main part
         let mut verts: Vec<Rc<RefCell<Vec3>>> = Vec::new();
-        for y in 0..(dim.1) {
-            for x in 0..(dim.0) {
-                // image axis y is positive on the way down, so we flip it
-                let coords = Mesh::image_to_mesh_coords((x, y), dim);
-                verts.push(Rc::new(RefCell::new(Vec3::new((coords.0, coords.1, height)))));
+        match corner {
+            CornerClamp::LeftUp => {
+                for y in 0..(settings.radius + 10) {
+                    for x in ((dim.0 - (settings.radius + 10))..(dim.0)).rev() {
+                        verts.push(Rc::new(RefCell::new(Vec3::new((x as f32 + 0.5, y as f32 + 0.5, height)))));
+                    }
+                }
+            },
+            CornerClamp::RightUp => {
+                for y in 0..(settings.radius + 10) {
+                    for x in 0..(settings.radius + 10) {
+                        verts.push(Rc::new(RefCell::new(Vec3::new((x as f32 + 0.5, y as f32 + 0.5, height)))));
+                    }
+                }
+            },
+            CornerClamp::RightDown => {
+                for y in ((dim.1 - (settings.radius + 10))..(dim.1)).rev() {
+                    for x in 0..(settings.radius + 10) {
+                        verts.push(Rc::new(RefCell::new(Vec3::new((x as f32 + 0.5, y as f32 + 0.5, height)))));
+                    }
+                }
+            },
+            CornerClamp::LeftDown => {
+                for y in ((dim.1 - (settings.radius + 10))..(dim.1)).rev() {
+                    for x in ((dim.0 - (settings.radius + 10))..(dim.0)).rev() {
+                        verts.push(Rc::new(RefCell::new(Vec3::new((x as f32 + 0.5, y as f32 + 0.5, height)))));
+                    }
+                }
             }
-        }
+        };
         Mesh {
             faces: Vec::new(),
             dimensions: dim,
@@ -429,4 +471,12 @@ pub enum MeshClamp {
     Down,
     Left,
     Right,
+}
+
+#[derive(Debug)]
+pub enum CornerClamp {
+    LeftUp,
+    RightUp,
+    RightDown,
+    LeftDown,
 }

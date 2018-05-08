@@ -6,14 +6,17 @@ use distance_field::mesh::Mesh;
 use distance_field::settings;
 use image::GenericImage;
 use std::env;
+use std::io;
 use std::path::PathBuf;
 use std::process;
 use std::time::Instant;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
+    let mut whatever = String::from("");
     if args.len() <= 1 {
         eprintln!("You haven't inputed a filename, please pass it as an argument.");
+        io::stdin().read_line(&mut whatever).unwrap();
         process::exit(1);
     }
     let input = &args[1];
@@ -23,6 +26,7 @@ fn main() {
         Ok(file) => file,
         Err(error) => {
             eprintln!("Error with opening file {} :, {:?}", input, error);
+            io::stdin().read_line(&mut whatever).unwrap();
             process::exit(1);
         }
     };
@@ -59,6 +63,7 @@ fn main() {
         }
         Err(error) => {
             eprintln!("Error with saving file: {}", error);
+            io::stdin().read_line(&mut whatever).unwrap();
             process::exit(1);
         }
     };
