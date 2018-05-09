@@ -42,18 +42,20 @@ fn main() {
         "Mesh generated in {}",
         time.as_secs() as f64 + time.subsec_nanos() as f64 * 1e-9
     );
-    let now = Instant::now();
-    mesh.export("output.obj");
-    let time = now.elapsed();
-    println!(
-        "Mesh exported in {}",
-        time.as_secs() as f64 + time.subsec_nanos() as f64 * 1e-9
-    );
     println!(
         "Faces: {:?}, Verts: {:?}",
         mesh.faces.iter().count(),
         mesh.verts.iter().count()
     );
+    if args[2] != "--no-export" {
+        let now = Instant::now();
+        mesh.export("output.obj");
+        let time = now.elapsed();
+        println!(
+            "Mesh exported in {}",
+            time.as_secs() as f64 + time.subsec_nanos() as f64 * 1e-9
+        );
+    }
     // separate image into buffers
     // compute buffer
     // save image

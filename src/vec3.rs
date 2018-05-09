@@ -85,7 +85,7 @@ impl Vec3 {
         };
         return Ordering::Less;
     }
-    
+
     pub fn delta(&self, other: &Vec3) -> Vec3 {
         Vec3::new((self.x - other.x, self.y - other.y, self.z - other.z))
     }

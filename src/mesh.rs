@@ -1,25 +1,24 @@
 use face::Face;
 use image::{DynamicImage, GenericImage, Pixel};
 use settings::{GenSettings, ImgRepeat};
-use std::f32;
 use std::cell::RefCell;
+use std::f32;
 use std::fs::File;
-use std::io::{Write};
+use std::io::Write;
 use std::rc::Rc;
 use vec3::Vec3;
 
-const MOVES: [[f32; 2]; 8] = [
-    [-1.0, 0.0],
-    [-1.0, 1.0],
-    [0.0, 1.0],
-    [1.0, 1.0],
-    [1.0, 0.0],
-    [1.0, -1.0],
-    [0.0, -1.0],
-    [-1.0, -1.0],
+const MOVES: [([f32; 2], Dir); 8] = [
+    ([-1.0, 0.0], Dir::Left),
+    ([-1.0, 1.0], Dir::LeftUp),
+    ([0.0, 1.0], Dir::Up),
+    ([1.0, 1.0], Dir::RightUp),
+    ([1.0, 0.0], Dir::Right),
+    ([1.0, -1.0], Dir::RightDown),
+    ([0.0, -1.0], Dir::Down),
+    ([-1.0, -1.0], Dir::LeftDown),
 ];
-const EXPORT_SCALE:f32 = 1.0/100.0;
-
+const EXPORT_SCALE: f32 = 1.0 / 100.0;
 
 #[derive(Debug)]
 pub struct Mesh {
@@ -45,28 +44,35 @@ impl Mesh {
         let mut data = String::from("");
         for point in self.verts.iter() {
             let p = point.borrow();
-            data.push_str(&format!("v {} {} {}\n", p.x * EXPORT_SCALE, p.y * EXPORT_SCALE, p.z * EXPORT_SCALE));
+            data.push_str(&format!(
+                "v {} {} {}\n",
+                p.x * EXPORT_SCALE,
+                p.y * EXPORT_SCALE,
+                p.z * EXPORT_SCALE
+            ));
         }
         println!("All points written.");
         for (i, _face) in self.faces.iter().enumerate() {
-            let row = (i/2) / self.ext_dim.0;
+            let row = (i / 2) / self.ext_dim.0;
             let pos_in_row = i - row * self.ext_dim.0 * 2;
             match i % 2 {
                 0 => {
-                     data.push_str(&format!("f {} {} {}\n",
-                        pos_in_row/2 + (row + 1) * (self.ext_dim.0 + 1) + 2,
-                        pos_in_row/2 + (row + 1) * (self.ext_dim.0 + 1) + 1,
-                        pos_in_row/2 + row * (self.ext_dim.0 + 1) + 1,
-                        ));
-                },
+                    data.push_str(&format!(
+                        "f {} {} {}\n",
+                        pos_in_row / 2 + (row + 1) * (self.ext_dim.0 + 1) + 2,
+                        pos_in_row / 2 + (row + 1) * (self.ext_dim.0 + 1) + 1,
+                        pos_in_row / 2 + row * (self.ext_dim.0 + 1) + 1,
+                    ));
+                }
                 1 => {
-                     data.push_str(&format!("f {} {} {}\n",
-                        pos_in_row/2 + (row + 1) * (self.ext_dim.0 + 1) + 2,
-                        pos_in_row/2 + row * (self.ext_dim.0 + 1) + 1,
-                        pos_in_row/2 + row * (self.ext_dim.0 + 1) + 2
-                        ));
-                },
-                _ => ()
+                    data.push_str(&format!(
+                        "f {} {} {}\n",
+                        pos_in_row / 2 + (row + 1) * (self.ext_dim.0 + 1) + 2,
+                        pos_in_row / 2 + row * (self.ext_dim.0 + 1) + 1,
+                        pos_in_row / 2 + row * (self.ext_dim.0 + 1) + 2
+                    ));
+                }
+                _ => (),
             };
         }
         println!("All faces written.");
@@ -121,8 +127,45 @@ impl Mesh {
         }
     }
 
+    /// Returns cut version of the mesh.
+    fn cutted(&self, settings: &GenSettings, dir: &Dir) -> Mesh {
+        let cut = 10.0;
+        let mut verts: Vec<Rc<RefCell<Vec3>>> = Vec::new();
+        let rad = settings.radius as f32;
+        let dim = (self.dimensions.0 as f32, self.dimensions.1 as f32);
+        let (x_low, x_high, y_low, y_high) =
+            (rad + cut, dim.0 - rad - cut, rad + cut, dim.1 - rad - cut);
+        // ┌─3─┐
+        // 0   1
+        // └─2─┘
+        let borders: (f32, f32, f32, f32) = match dir {
+            Dir::Left => (x_high, dim.0, 0.0, dim.1),
+            Dir::LeftUp => (x_high, dim.0, 0.0, y_low),
+            Dir::Up => (0.0, dim.0, 0.0, y_low),
+            Dir::RightUp => (0.0, x_low, 0.0, y_low),
+            Dir::Right => (0.0, x_low, 0.0, dim.1),
+            Dir::RightDown => (0.0, x_low, y_high, dim.1),
+            Dir::Down => (0.0, dim.0, y_high, dim.1),
+            Dir::LeftDown => (x_high, dim.0, y_high, dim.1),
+        };
+        for vert in self.verts.iter() {
+            let v = vert.borrow();
+            let x = v.x < borders.1 && v.x > borders.0;
+            let y = v.y < borders.3 && v.y > borders.2;
+            if x && y {
+                verts.push(Rc::new(RefCell::new(vert.borrow().clone())));
+            }
+        }
+        Mesh {
+            faces: Vec::new(),
+            dimensions: self.dimensions,
+            ext_dim: self.ext_dim,
+            verts: verts,
+        }
+    }
+
     /// Return generated clippped version of the mesh.
-    fn clamp(mesh: &Mesh, axis: MeshClamp, settings: &GenSettings) -> Mesh {
+    fn clamp(mesh: &Mesh, axis: &Dir, settings: &GenSettings) -> Mesh {
         let mut clamped = Mesh::empty_copy(mesh);
         let mut sub_vec: Vec<Rc<RefCell<Vec3>>> = Vec::new();
         let border = (
@@ -133,26 +176,27 @@ impl Mesh {
         for point in mesh.verts.iter() {
             let p = point.borrow();
             match axis {
-                MeshClamp::Left => {
+                Dir::Left => {
                     if p.x == 0.5 && !sub_vec.contains(&point) {
                         sub_vec.push(Rc::clone(point));
                     }
                 }
-                MeshClamp::Up => {
+                Dir::Up => {
                     if p.y == border.1 && !sub_vec.contains(&point) {
                         sub_vec.push(Rc::clone(point));
                     }
                 }
-                MeshClamp::Right => {
+                Dir::Right => {
                     if p.x == border.0 && !sub_vec.contains(&point) {
                         sub_vec.push(Rc::clone(point));
                     }
                 }
-                MeshClamp::Down => {
+                Dir::Down => {
                     if p.y == 0.5 && !sub_vec.contains(&point) {
                         sub_vec.push(Rc::clone(point));
                     }
                 }
+                _ => panic!("Wrong option"),
             }
         }
         // sort points
@@ -164,7 +208,7 @@ impl Mesh {
         // flip coords, do we avoid out of bounds error
         let mut dim = (settings.radius + 10, mesh.dimensions.0);
         match axis {
-            MeshClamp::Left | MeshClamp::Right => dim = (settings.radius + 10, mesh.dimensions.1),
+            Dir::Left | Dir::Right => dim = (settings.radius + 10, mesh.dimensions.1),
             _ => (),
         }
         // generate mesh
@@ -181,15 +225,15 @@ impl Mesh {
         clamped.verts = verts;
         // rotate and move mesh
         match axis {
-            MeshClamp::Left => {
+            Dir::Left => {
                 for point in clamped.verts.iter_mut() {
                     let mut p = point.borrow_mut();
                     let temp = p.x;
                     p.x = p.y + (mesh.dimensions.0 - (settings.radius + 10)) as f32;
                     p.y = mesh.dimensions.1 as f32 - temp;
                 }
-            },
-            MeshClamp::Right => {
+            }
+            Dir::Right => {
                 for point in clamped.verts.iter_mut() {
                     let mut p = point.borrow_mut();
                     let temp = p.x;
@@ -197,13 +241,14 @@ impl Mesh {
                     p.y = mesh.dimensions.1 as f32 - temp;
                 }
             }
-            MeshClamp::Up => (),
-            MeshClamp::Down => {
+            Dir::Up => (),
+            Dir::Down => {
                 for point in clamped.verts.iter_mut() {
                     let mut p = point.borrow_mut();
                     p.y = p.y + (mesh.dimensions.1 - (settings.radius + 10)) as f32;
                 }
-            },
+            }
+            _ => panic!("Wrong option"),
         };
         clamped
     }
@@ -234,8 +279,9 @@ impl Mesh {
         let mut outer_mesh: Mesh = match settings.repeat {
             ImgRepeat::Repeat => {
                 let mut outer = Mesh::empty_copy(&self);
-                for xy in MOVES.iter() {
-                    let mut moved = self.clone();
+                for mov in MOVES.iter() {
+                    let (xy, dir) = mov;
+                    let mut moved = self.cutted(&settings, dir);
                     moved.translate(Vec3::new((
                         self.dimensions.0 as f32 * xy[0],
                         self.dimensions.1 as f32 * xy[1],
@@ -251,42 +297,47 @@ impl Mesh {
                 // 0───1
                 // │   │
                 // 3───2
-                let mut corners: [f32; 4] = [0.0, 0.0, 0.0, 0.0];
-                let borders = (
-                    self.dimensions.0 as f32 - 0.5,
-                    self.dimensions.1 as f32 - 0.5,
-                );
-                for point in self.verts.iter() {
-                    let p = point.borrow();
-                    if p.x == 0.5 && p.y == 0.5 {
-                        corners[3] = p.z;
-                    } else if p.x == borders.0 && p.y == 0.5 {
-                        corners[2] = p.z;
-                    } else if p.x == 0.5 && p.y == borders.1 {
-                        corners[0] = p.z;
-                    } else if p.x == borders.0 && p.y == borders.1 {
-                        corners[1] = p.z;
-                    }
-                }
-                for xy in MOVES.iter() {
-                    let mut moved: Mesh = Mesh::empty_copy(&self);
+                let corners: [f32; 4] = [
+                    self.verts[self.verts.len() - self.dimensions.0 as usize]
+                        .borrow()
+                        .z,
+                    self.verts[self.verts.len() - 1].borrow().z,
+                    self.verts[self.dimensions.0 as usize - 1].borrow().z,
+                    self.verts[0].borrow().z,
+                ];
+                for (xy, dir) in MOVES.iter() {
+                    let mut moved: Mesh;
                     // corners
                     if xy[0] == -1.0 && xy[1] == 1.0 {
-                        moved = Mesh::generate_corner_from_height(self.dimensions, corners[0], &settings, CornerClamp::LeftUp);
+                        moved = Mesh::generate_corner_from_height(
+                            self.dimensions,
+                            corners[0],
+                            &settings,
+                            dir,
+                        );
                     } else if xy[0] == 1.0 && xy[1] == 1.0 {
-                        moved = Mesh::generate_corner_from_height(self.dimensions, corners[1], &settings, CornerClamp::RightUp);
+                        moved = Mesh::generate_corner_from_height(
+                            self.dimensions,
+                            corners[1],
+                            &settings,
+                            dir,
+                        );
                     } else if xy[0] == 1.0 && xy[1] == -1.0 {
-                        moved = Mesh::generate_corner_from_height(self.dimensions, corners[2], &settings, CornerClamp::RightDown);
+                        moved = Mesh::generate_corner_from_height(
+                            self.dimensions,
+                            corners[2],
+                            &settings,
+                            dir,
+                        );
                     } else if xy[0] == -1.0 && xy[1] == -1.0 {
-                        moved = Mesh::generate_corner_from_height(self.dimensions, corners[3], &settings, CornerClamp::LeftDown);
-                    } else if xy[0] == -1.0 && xy[1] == 0.0 {
-                        moved = Mesh::clamp(self, MeshClamp::Left, &settings);
-                    } else if xy[0] == 0.0 && xy[1] == 1.0 {
-                        moved = Mesh::clamp(self, MeshClamp::Up, &settings);
-                    } else if xy[0] == 1.0 && xy[1] == 0.0 {
-                        moved = Mesh::clamp(self, MeshClamp::Right, &settings);
-                    } else if xy[0] == 0.0 && xy[1] == -1.0 {
-                        moved = Mesh::clamp(self, MeshClamp::Down, &settings);
+                        moved = Mesh::generate_corner_from_height(
+                            self.dimensions,
+                            corners[3],
+                            &settings,
+                            dir,
+                        );
+                    } else {
+                        moved = Mesh::clamp(self, dir, &settings);
                     }
                     moved.translate(Vec3::new((
                         self.dimensions.0 as f32 * xy[0],
@@ -299,7 +350,7 @@ impl Mesh {
             }
             ImgRepeat::Mirror => {
                 let mut outer = Mesh::empty_copy(&self);
-                for xy in MOVES.iter() {
+                for (xy, _) in MOVES.iter() {
                     let mut moved = self.clone();
                     if f32::abs(xy[0]) + f32::abs(xy[1]) == 2.0 {
                         moved.flip((true, true));
@@ -320,7 +371,7 @@ impl Mesh {
         };
         println!("Out of range parts generated");
         match settings.repeat {
-            ImgRepeat::Clamp => (),
+            ImgRepeat::Clamp | ImgRepeat::Repeat => (),
             _ => {
                 outer_mesh.clean_far_verts(&settings);
                 println!("Far verts cleaned");
@@ -331,31 +382,27 @@ impl Mesh {
 
     /// Computes faces for whole mesh with good orentation
     fn compute_faces(&mut self) {
-        // get maximal coordinates
-        // ┌─1─┐ 
-        // 0   2 --->
-        // └─3─┘ ------>
-        let mut coords: [f32; 4] = [0.0, 0.0, 0.0, 0.0];
-        for point in self.verts.iter() {
-            let p = point.borrow();
-            if p.x < coords[0] {
-                coords[0] = p.x;
-            } else if p.x > coords[2] {
-                coords[2] = p.x;
-            } else if p.y > coords[1] {
-                coords[1] = p.y;
-            } else if p.y < coords[3] {
-                coords[3] = p.y;
-            }
-        }
-        println!("{:?}", coords);
-        let bounds = ((coords[2] - coords[0]) as usize, (coords[1] - coords[3]) as usize);
-        // sort those points
+        // sort all points
         self.verts.sort_unstable_by(|a, b| {
             let a_borrowed = a.borrow();
             let b_borrowed = b.borrow();
             a_borrowed.cmp_xy(&b_borrowed)
         });
+        // get maximal coordinates
+        // ┌─1─┐
+        // 0   2
+        // └─3─┘
+        let coords: [f32; 4] = [
+            self.verts[0].borrow().x,
+            self.verts[self.verts.len() - 1].borrow().y,
+            self.verts[self.verts.len() - 1].borrow().x,
+            self.verts[0].borrow().y,
+        ];
+        println!("{:?}", coords);
+        let bounds = (
+            (coords[2] - coords[0]) as usize,
+            (coords[1] - coords[3]) as usize,
+        );
         // compute faces
         let mut faces: Vec<Face> = Vec::new();
         for x in 0..bounds.0 {
@@ -365,12 +412,12 @@ impl Mesh {
                 faces.push(Face::new(
                     Rc::clone(&self.verts[upper_i + 1]),
                     Rc::clone(&self.verts[upper_i]),
-                    Rc::clone(&self.verts[lower_i])
+                    Rc::clone(&self.verts[lower_i]),
                 ));
                 faces.push(Face::new(
                     Rc::clone(&self.verts[upper_i + 1]),
                     Rc::clone(&self.verts[lower_i]),
-                    Rc::clone(&self.verts[lower_i + 1])
+                    Rc::clone(&self.verts[lower_i + 1]),
                 ));
             }
         }
@@ -379,38 +426,60 @@ impl Mesh {
     }
 
     /// Generate corner mesh
-    fn generate_corner_from_height(dim: (u32, u32), height: f32, settings: &GenSettings, corner: CornerClamp) -> Mesh {
+    fn generate_corner_from_height(
+        dim: (u32, u32),
+        height: f32,
+        settings: &GenSettings,
+        corner: &Dir,
+    ) -> Mesh {
         // generate main part
         let mut verts: Vec<Rc<RefCell<Vec3>>> = Vec::new();
         match corner {
-            CornerClamp::LeftUp => {
+            Dir::LeftUp => {
                 for y in 0..(settings.radius + 10) {
                     for x in ((dim.0 - (settings.radius + 10))..(dim.0)).rev() {
-                        verts.push(Rc::new(RefCell::new(Vec3::new((x as f32 + 0.5, y as f32 + 0.5, height)))));
-                    }
-                }
-            },
-            CornerClamp::RightUp => {
-                for y in 0..(settings.radius + 10) {
-                    for x in 0..(settings.radius + 10) {
-                        verts.push(Rc::new(RefCell::new(Vec3::new((x as f32 + 0.5, y as f32 + 0.5, height)))));
-                    }
-                }
-            },
-            CornerClamp::RightDown => {
-                for y in ((dim.1 - (settings.radius + 10))..(dim.1)).rev() {
-                    for x in 0..(settings.radius + 10) {
-                        verts.push(Rc::new(RefCell::new(Vec3::new((x as f32 + 0.5, y as f32 + 0.5, height)))));
-                    }
-                }
-            },
-            CornerClamp::LeftDown => {
-                for y in ((dim.1 - (settings.radius + 10))..(dim.1)).rev() {
-                    for x in ((dim.0 - (settings.radius + 10))..(dim.0)).rev() {
-                        verts.push(Rc::new(RefCell::new(Vec3::new((x as f32 + 0.5, y as f32 + 0.5, height)))));
+                        verts.push(Rc::new(RefCell::new(Vec3::new((
+                            x as f32 + 0.5,
+                            y as f32 + 0.5,
+                            height,
+                        )))));
                     }
                 }
             }
+            Dir::RightUp => {
+                for y in 0..(settings.radius + 10) {
+                    for x in 0..(settings.radius + 10) {
+                        verts.push(Rc::new(RefCell::new(Vec3::new((
+                            x as f32 + 0.5,
+                            y as f32 + 0.5,
+                            height,
+                        )))));
+                    }
+                }
+            }
+            Dir::RightDown => {
+                for y in ((dim.1 - (settings.radius + 10))..(dim.1)).rev() {
+                    for x in 0..(settings.radius + 10) {
+                        verts.push(Rc::new(RefCell::new(Vec3::new((
+                            x as f32 + 0.5,
+                            y as f32 + 0.5,
+                            height,
+                        )))));
+                    }
+                }
+            }
+            Dir::LeftDown => {
+                for y in ((dim.1 - (settings.radius + 10))..(dim.1)).rev() {
+                    for x in ((dim.0 - (settings.radius + 10))..(dim.0)).rev() {
+                        verts.push(Rc::new(RefCell::new(Vec3::new((
+                            x as f32 + 0.5,
+                            y as f32 + 0.5,
+                            height,
+                        )))));
+                    }
+                }
+            }
+            _ => panic!("Wrong option"),
         };
         Mesh {
             faces: Vec::new(),
@@ -436,6 +505,11 @@ impl Mesh {
                 )))));
             }
         }
+        verts.sort_unstable_by(|a, b| {
+            let a_borrowed = a.borrow();
+            let b_borrowed = b.borrow();
+            a_borrowed.cmp_xy(&b_borrowed)
+        });
         Mesh {
             faces: Vec::new(),
             dimensions: dim,
@@ -451,7 +525,7 @@ impl Mesh {
 }
 
 impl Clone for Mesh {
-    fn clone(&self) -> Mesh{
+    fn clone(&self) -> Mesh {
         let mut verts: Vec<Rc<RefCell<Vec3>>> = Vec::new();
         for vert in self.verts.iter() {
             verts.push(Rc::new(RefCell::new(vert.borrow().clone())));
@@ -466,17 +540,13 @@ impl Clone for Mesh {
 }
 
 #[derive(Debug)]
-pub enum MeshClamp {
-    Up,
-    Down,
+pub enum Dir {
     Left,
-    Right,
-}
-
-#[derive(Debug)]
-pub enum CornerClamp {
     LeftUp,
+    Up,
     RightUp,
+    Right,
     RightDown,
+    Down,
     LeftDown,
 }

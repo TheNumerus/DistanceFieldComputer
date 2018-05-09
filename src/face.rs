@@ -4,12 +4,16 @@ use vec3::Vec3;
 
 #[derive(Debug)]
 pub struct Face {
-    pub verts: [Rc<RefCell<Vec3>>;3],
+    pub verts: [Rc<RefCell<Vec3>>; 3],
     pub normal: Vec3,
 }
 
 impl Face {
-    pub fn new(first: Rc<RefCell<Vec3>>, second: Rc<RefCell<Vec3>>, third: Rc<RefCell<Vec3>>) -> Face {
+    pub fn new(
+        first: Rc<RefCell<Vec3>>,
+        second: Rc<RefCell<Vec3>>,
+        third: Rc<RefCell<Vec3>>,
+    ) -> Face {
         let mut f = Face {
             verts: [first, second, third],
             normal: Vec3::new((0.0, 0.0, 1.0)),
