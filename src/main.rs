@@ -47,9 +47,9 @@ fn main() {
         mesh.faces.iter().count(),
         mesh.verts.iter().count()
     );
-    if args[2] != "--no-export" {
+    if args.len() <= 2 || args[2] != "--no-export" {
         let now = Instant::now();
-        mesh.export("output.obj");
+        mesh.export("output.obj", &settings);
         let time = now.elapsed();
         println!(
             "Mesh exported in {}",

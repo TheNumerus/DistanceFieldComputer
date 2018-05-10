@@ -34,12 +34,12 @@ impl Mesh {
         let mut middle = Mesh::generate_mesh_from_img(img, settings);
         println!("Middle part generated");
         middle.compute_out_of_range_mesh(settings);
-        middle.compute_faces();
+        middle.compute_faces(settings);
         middle
     }
 
     /// Export mesh data in obj. format.
-    pub fn export(&self, filename: &str) {
+    pub fn export(&self, filename: &str, settings: &GenSettings) {
         let mut file = File::create(filename).unwrap();
         let mut data = String::from("");
         for point in self.verts.iter() {
@@ -52,24 +52,29 @@ impl Mesh {
             ));
         }
         println!("All points written.");
+        let points_in_row = match settings.repeat {
+            ImgRepeat::Clamp => (self.dimensions.0 + 2) as usize,
+            _ => self.ext_dim.0 + 1,
+        };
+        println!("{:?}", points_in_row);
         for (i, _face) in self.faces.iter().enumerate() {
-            let row = (i / 2) / self.ext_dim.0;
-            let pos_in_row = i - row * self.ext_dim.0 * 2;
+            let row = (i / 2) / (points_in_row - 1);
+            let pos_in_row = i - row * (points_in_row - 1) * 2;
             match i % 2 {
                 0 => {
                     data.push_str(&format!(
                         "f {} {} {}\n",
-                        pos_in_row / 2 + (row + 1) * (self.ext_dim.0 + 1) + 2,
-                        pos_in_row / 2 + (row + 1) * (self.ext_dim.0 + 1) + 1,
-                        pos_in_row / 2 + row * (self.ext_dim.0 + 1) + 1,
+                        pos_in_row / 2 + (row + 1) * (points_in_row) + 2,
+                        pos_in_row / 2 + (row + 1) * (points_in_row) + 1,
+                        pos_in_row / 2 + row * (points_in_row) + 1,
                     ));
                 }
                 1 => {
                     data.push_str(&format!(
                         "f {} {} {}\n",
-                        pos_in_row / 2 + (row + 1) * (self.ext_dim.0 + 1) + 2,
-                        pos_in_row / 2 + row * (self.ext_dim.0 + 1) + 1,
-                        pos_in_row / 2 + row * (self.ext_dim.0 + 1) + 2
+                        pos_in_row / 2 + (row + 1) * (points_in_row) + 2,
+                        pos_in_row / 2 + row * (points_in_row) + 1,
+                        pos_in_row / 2 + row * (points_in_row) + 2
                     ));
                 }
                 _ => (),
@@ -249,51 +254,48 @@ impl Mesh {
             let b_borrowed = b.borrow();
             a_borrowed.cmp_x(&b_borrowed)
         });
-        // flip coords, do we avoid out of bounds error
-        let mut dim = (settings.radius + 10, mesh.dimensions.0);
-        match axis {
-            Dir::Left | Dir::Right => dim = (settings.radius + 10, mesh.dimensions.1),
-            _ => (),
-        }
-        // generate mesh
         let mut verts: Vec<Rc<RefCell<Vec3>>> = Vec::new();
-        for y in 0..(dim.0) {
-            for x in 0..(dim.1) {
-                verts.push(Rc::new(RefCell::new(Vec3::new((
-                    x as f32 + 0.5,
-                    y as f32 + 0.5,
-                    sub_vec[x as usize].borrow().z,
-                )))));
-            }
-        }
-        clamped.verts = verts;
-        // rotate and move mesh
+        // generate mesh
         match axis {
             Dir::Left => {
-                for point in clamped.verts.iter_mut() {
-                    let mut p = point.borrow_mut();
-                    let temp = p.x;
-                    p.x = p.y + (mesh.dimensions.0 - (settings.radius + 10)) as f32;
-                    p.y = mesh.dimensions.1 as f32 - temp;
+                for x in 0..sub_vec.len() {
+                    verts.push(Rc::new(RefCell::new(Vec3::new((
+                        (mesh.dimensions.0 - (settings.radius + 10)) as f32 + 0.5,
+                        x as f32 + 0.5,
+                        sub_vec[x as usize].borrow().z,
+                    )))));
                 }
             }
             Dir::Right => {
-                for point in clamped.verts.iter_mut() {
-                    let mut p = point.borrow_mut();
-                    let temp = p.x;
-                    p.x = p.y;
-                    p.y = mesh.dimensions.1 as f32 - temp;
+                for x in 0..sub_vec.len() {
+                    verts.push(Rc::new(RefCell::new(Vec3::new((
+                        (settings.radius + 10) as f32 - 0.5,
+                        x as f32 + 0.5,
+                        sub_vec[x as usize].borrow().z,
+                    )))));
                 }
             }
-            Dir::Up => (),
+            Dir::Up => {
+                for x in 0..sub_vec.len() {
+                    verts.push(Rc::new(RefCell::new(Vec3::new((
+                        x as f32 + 0.5,
+                        (settings.radius + 10) as f32 - 0.5,
+                        sub_vec[x as usize].borrow().z,
+                    )))));
+                }
+            },
             Dir::Down => {
-                for point in clamped.verts.iter_mut() {
-                    let mut p = point.borrow_mut();
-                    p.y = p.y + (mesh.dimensions.1 - (settings.radius + 10)) as f32;
+                for x in 0..sub_vec.len() {
+                    verts.push(Rc::new(RefCell::new(Vec3::new((
+                        x as f32 + 0.5,
+                        (mesh.dimensions.1 - (settings.radius + 10)) as f32 + 0.5,
+                        sub_vec[x as usize].borrow().z,
+                    )))));
                 }
             }
             _ => panic!("Wrong option"),
         };
+        clamped.verts = verts;
         clamped
     }
 
@@ -403,7 +405,7 @@ impl Mesh {
     }
 
     /// Computes faces for whole mesh with good orentation
-    fn compute_faces(&mut self) {
+    fn compute_faces(&mut self, settings: &GenSettings) {
         // sort all points
         self.verts.sort_unstable_by(|a, b| {
             let a_borrowed = a.borrow();
@@ -421,10 +423,14 @@ impl Mesh {
             self.verts[0].borrow().y,
         ];
         println!("{:?}", coords);
-        let bounds = (
-            (coords[2] - coords[0]) as usize,
-            (coords[1] - coords[3]) as usize,
-        );
+        let bounds: (usize, usize) = match settings.repeat {
+            ImgRepeat::Clamp => {
+                ((self.dimensions.0 + 1) as usize, (self.dimensions.1 + 1) as usize)
+            },
+            _ => {
+            ((coords[2] - coords[0]) as usize, (coords[1] - coords[3]) as usize)
+            }
+        };
         // compute faces
         let mut faces: Vec<Face> = Vec::with_capacity(bounds.0 * bounds.1 * 2);
         for x in 0..bounds.0 {
@@ -456,51 +462,35 @@ impl Mesh {
     ) -> Mesh {
         // generate main part
         let mut verts: Vec<Rc<RefCell<Vec3>>> =
-            Vec::with_capacity(((settings.radius + 10) * (settings.radius + 10)) as usize);
+            Vec::with_capacity(1);
         match corner {
             Dir::LeftUp => {
-                for y in 0..(settings.radius + 10) {
-                    for x in ((dim.0 - (settings.radius + 10))..(dim.0)).rev() {
-                        verts.push(Rc::new(RefCell::new(Vec3::new((
-                            x as f32 + 0.5,
-                            y as f32 + 0.5,
-                            height,
-                        )))));
-                    }
-                }
+                verts.push(Rc::new(RefCell::new(Vec3::new((
+                    (dim.0 - settings.radius) as f32 - 9.5,
+                    settings.radius as f32 + 9.5,
+                    height,
+                )))));
             }
             Dir::RightUp => {
-                for y in 0..(settings.radius + 10) {
-                    for x in 0..(settings.radius + 10) {
-                        verts.push(Rc::new(RefCell::new(Vec3::new((
-                            x as f32 + 0.5,
-                            y as f32 + 0.5,
-                            height,
-                        )))));
-                    }
-                }
+                verts.push(Rc::new(RefCell::new(Vec3::new((
+                    settings.radius as f32 + 9.5,
+                    settings.radius as f32 + 9.5,
+                    height,
+                )))));
             }
             Dir::RightDown => {
-                for y in ((dim.1 - (settings.radius + 10))..(dim.1)).rev() {
-                    for x in 0..(settings.radius + 10) {
-                        verts.push(Rc::new(RefCell::new(Vec3::new((
-                            x as f32 + 0.5,
-                            y as f32 + 0.5,
-                            height,
-                        )))));
-                    }
-                }
+                verts.push(Rc::new(RefCell::new(Vec3::new((
+                    settings.radius as f32 + 9.5,
+                    (dim.1 - settings.radius) as f32 - 9.5,
+                    height,
+                )))));
             }
             Dir::LeftDown => {
-                for y in ((dim.1 - (settings.radius + 10))..(dim.1)).rev() {
-                    for x in ((dim.0 - (settings.radius + 10))..(dim.0)).rev() {
-                        verts.push(Rc::new(RefCell::new(Vec3::new((
-                            x as f32 + 0.5,
-                            y as f32 + 0.5,
-                            height,
-                        )))));
-                    }
-                }
+                verts.push(Rc::new(RefCell::new(Vec3::new((
+                    (dim.0 - settings.radius) as f32 - 9.5,
+                    (dim.1 - settings.radius) as f32 - 9.5,
+                    height,
+                )))));
             }
             _ => panic!("Wrong option"),
         };
