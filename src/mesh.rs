@@ -104,16 +104,46 @@ impl Mesh {
     }
 
     /// Flipes mesh data along given axis.
-    fn flip(&mut self, axis: (bool, bool)) {
-        let coords = (self.dimensions.0 as f32, self.dimensions.1 as f32);
-        for vert in self.verts.iter_mut() {
-            let mut v = vert.borrow_mut();
-            if axis.0 {
-                v.x = coords.0 - v.x;
+    fn flipped(&self, axis: (bool, bool), settings: &GenSettings, dir: &Dir) -> Mesh {
+        let cut = 10.0;
+        let mut verts: Vec<Rc<RefCell<Vec3>>> = Vec::new();
+        let rad = settings.radius as f32;
+        let dim = (self.dimensions.0 as f32, self.dimensions.1 as f32);
+        let (x_low, x_high, y_low, y_high) =
+            (rad + cut, dim.0 - rad - cut, rad + cut, dim.1 - rad - cut);
+        // ┌─3─┐
+        // 0   1
+        // └─2─┘
+        let borders: (f32, f32, f32, f32) = match dir {
+            Dir::Right => (x_high, dim.0, 0.0, dim.1),
+            Dir::RightDown => (x_high, dim.0, 0.0, y_low),
+            Dir::Down => (0.0, dim.0, 0.0, y_low),
+            Dir::LeftDown => (0.0, x_low, 0.0, y_low),
+            Dir::Left => (0.0, x_low, 0.0, dim.1),
+            Dir::LeftUp => (0.0, x_low, y_high, dim.1),
+            Dir::Up => (0.0, dim.0, y_high, dim.1),
+            Dir::RightUp => (x_high, dim.0, y_high, dim.1),
+        };
+        for vert in self.verts.iter() {
+            let vert = vert.borrow();
+            let x = vert.x < borders.1 && vert.x > borders.0;
+            let y = vert.y < borders.3 && vert.y > borders.2;
+            if x && y {
+                let mut v = vert.clone();
+                if axis.0 {
+                    v.x = dim.0 - v.x;
+                }
+                if axis.1 {
+                    v.y = dim.1 - v.y;
+                }
+                verts.push(Rc::new(RefCell::new(v)));
             }
-            if axis.1 {
-                v.y = coords.1 - v.y;
-            }
+        }
+        Mesh {
+            faces: Vec::new(),
+            dimensions: self.dimensions,
+            ext_dim: self.ext_dim,
+            verts: verts,
         }
     }
 
@@ -167,37 +197,51 @@ impl Mesh {
     /// Return generated clippped version of the mesh.
     fn clamp(mesh: &Mesh, axis: &Dir, settings: &GenSettings) -> Mesh {
         let mut clamped = Mesh::empty_copy(mesh);
-        let mut sub_vec: Vec<Rc<RefCell<Vec3>>> = Vec::new();
+        let bigger = if mesh.dimensions.0 > mesh.dimensions.1 {
+            mesh.dimensions.0
+        } else {
+            mesh.dimensions.1
+        };
+        let mut sub_vec: Vec<Rc<RefCell<Vec3>>> = Vec::with_capacity(bigger as usize);
         let border = (
             mesh.dimensions.0 as f32 - 0.5,
             mesh.dimensions.1 as f32 - 0.5,
         );
         // get points
-        for point in mesh.verts.iter() {
-            let p = point.borrow();
-            match axis {
-                Dir::Left => {
+        match axis {
+            Dir::Left => {
+                for point in mesh.verts.iter() {
+                    let p = point.borrow();
                     if p.x == 0.5 && !sub_vec.contains(&point) {
                         sub_vec.push(Rc::clone(point));
                     }
                 }
-                Dir::Up => {
+            }
+            Dir::Up => {
+                for point in mesh.verts.iter() {
+                    let p = point.borrow();
                     if p.y == border.1 && !sub_vec.contains(&point) {
                         sub_vec.push(Rc::clone(point));
                     }
                 }
-                Dir::Right => {
+            }
+            Dir::Right => {
+                for point in mesh.verts.iter() {
+                    let p = point.borrow();
                     if p.x == border.0 && !sub_vec.contains(&point) {
                         sub_vec.push(Rc::clone(point));
                     }
                 }
-                Dir::Down => {
+            }
+            Dir::Down => {
+                for point in mesh.verts.iter() {
+                    let p = point.borrow();
                     if p.y == 0.5 && !sub_vec.contains(&point) {
                         sub_vec.push(Rc::clone(point));
                     }
                 }
-                _ => panic!("Wrong option"),
             }
+            _ => panic!("Wrong option"),
         }
         // sort points
         sub_vec.sort_unstable_by(|a, b| {
@@ -257,21 +301,6 @@ impl Mesh {
     fn append_data(&mut self, other: &mut Mesh) {
         self.faces.append(&mut other.faces);
         self.verts.append(&mut other.verts);
-    }
-
-    /// Remove unaccessible data from mesh.
-    fn clean_far_verts(&mut self, settings: &GenSettings) {
-        let mut verts: Vec<Rc<RefCell<Vec3>>> = Vec::new();
-        let rad = settings.radius as f32;
-        for vert in self.verts.iter() {
-            let v = vert.borrow();
-            let x = v.x < ((self.dimensions.0 as f32) + 10.0 + rad) && v.x > -(rad + 10.0);
-            let y = v.y < ((self.dimensions.1 as f32) + 10.0 + rad) && v.y > -(rad + 10.0);
-            if x && y {
-                verts.push(Rc::clone(vert));
-            }
-        }
-        self.verts = verts;
     }
 
     /// Generate mesh data out of given image frame.
@@ -350,14 +379,14 @@ impl Mesh {
             }
             ImgRepeat::Mirror => {
                 let mut outer = Mesh::empty_copy(&self);
-                for (xy, _) in MOVES.iter() {
-                    let mut moved = self.clone();
+                for (xy, dir) in MOVES.iter() {
+                    let mut moved: Mesh;
                     if f32::abs(xy[0]) + f32::abs(xy[1]) == 2.0 {
-                        moved.flip((true, true));
+                        moved = self.flipped((true, true), &settings, dir);
                     } else if f32::abs(xy[0]) == 1.0 && f32::abs(xy[1]) == 0.0 {
-                        moved.flip((true, false));
-                    } else if f32::abs(xy[0]) == 0.0 && f32::abs(xy[1]) == 1.0 {
-                        moved.flip((false, true));
+                        moved = self.flipped((true, false), &settings, dir);
+                    } else {
+                        moved = self.flipped((false, true), &settings, dir);
                     }
                     moved.translate(Vec3::new((
                         self.dimensions.0 as f32 * xy[0],
@@ -370,13 +399,6 @@ impl Mesh {
             }
         };
         println!("Out of range parts generated");
-        match settings.repeat {
-            ImgRepeat::Clamp | ImgRepeat::Repeat => (),
-            _ => {
-                outer_mesh.clean_far_verts(&settings);
-                println!("Far verts cleaned");
-            }
-        };
         self.append_data(&mut outer_mesh);
     }
 
@@ -404,7 +426,7 @@ impl Mesh {
             (coords[1] - coords[3]) as usize,
         );
         // compute faces
-        let mut faces: Vec<Face> = Vec::new();
+        let mut faces: Vec<Face> = Vec::with_capacity(bounds.0 * bounds.1 * 2);
         for x in 0..bounds.0 {
             for y in 0..bounds.1 {
                 let lower_i = y * bounds.0 + x;
@@ -433,7 +455,8 @@ impl Mesh {
         corner: &Dir,
     ) -> Mesh {
         // generate main part
-        let mut verts: Vec<Rc<RefCell<Vec3>>> = Vec::new();
+        let mut verts: Vec<Rc<RefCell<Vec3>>> =
+            Vec::with_capacity(((settings.radius + 10) * (settings.radius + 10)) as usize);
         match corner {
             Dir::LeftUp => {
                 for y in 0..(settings.radius + 10) {
@@ -493,7 +516,7 @@ impl Mesh {
     fn generate_mesh_from_img(img: &DynamicImage, settings: &GenSettings) -> Mesh {
         let dim = img.dimensions();
         // generate main part
-        let mut verts: Vec<Rc<RefCell<Vec3>>> = Vec::new();
+        let mut verts: Vec<Rc<RefCell<Vec3>>> = Vec::with_capacity((dim.0 * dim.1) as usize);
         for y in 0..(dim.1) {
             for x in 0..(dim.0) {
                 // image axis y is positive on the way down, so we flip it
