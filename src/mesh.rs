@@ -23,7 +23,7 @@ const EXPORT_SCALE: f32 = 1.0 / 100.0;
 #[derive(Debug)]
 pub struct Mesh {
     pub faces: Vec<Face>,
-    dimensions: (u32, u32),
+    dimensions: (usize, usize),
     ext_dim: (usize, usize),
     pub verts: Vec<Rc<RefCell<Vec3>>>,
 }
@@ -261,7 +261,7 @@ impl Mesh {
                 for x in 0..sub_vec.len() {
                     verts.push(Rc::new(RefCell::new(Vec3::new((
                         (mesh.dimensions.0 - (settings.radius + 10)) as f32 + 0.5,
-                        x as f32 + 0.5,
+                        (mesh.dimensions.1 - x) as f32 - 0.5,
                         sub_vec[x as usize].borrow().z,
                     )))));
                 }
@@ -270,7 +270,7 @@ impl Mesh {
                 for x in 0..sub_vec.len() {
                     verts.push(Rc::new(RefCell::new(Vec3::new((
                         (settings.radius + 10) as f32 - 0.5,
-                        x as f32 + 0.5,
+                        (mesh.dimensions.1 - x) as f32 - 0.5,
                         sub_vec[x as usize].borrow().z,
                     )))));
                 }
@@ -455,7 +455,7 @@ impl Mesh {
 
     /// Generate corner mesh
     fn generate_corner_from_height(
-        dim: (u32, u32),
+        dim: (usize, usize),
         height: f32,
         settings: &GenSettings,
         corner: &Dir,
@@ -497,7 +497,7 @@ impl Mesh {
         Mesh {
             faces: Vec::new(),
             dimensions: dim,
-            ext_dim: (dim.0 as usize + 1, dim.1 as usize + 1),
+            ext_dim: (dim.0 + 1, dim.1 + 1),
             verts: verts,
         }
     }
@@ -520,7 +520,7 @@ impl Mesh {
         }
         Mesh {
             faces: Vec::new(),
-            dimensions: dim,
+            dimensions: (dim.0 as usize, dim.1 as usize),
             ext_dim: (dim.0 as usize, dim.1 as usize),
             verts: verts,
         }

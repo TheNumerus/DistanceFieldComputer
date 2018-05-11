@@ -45,7 +45,7 @@ fn main() {
         mesh.faces.iter().count(),
         mesh.verts.iter().count()
     );
-    match matches.occurrences_of("e") {
+    match matches.occurrences_of("export") {
         1 => {
             let now = Instant::now();
             mesh.export("output.obj", &settings);

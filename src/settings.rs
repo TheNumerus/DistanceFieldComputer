@@ -1,11 +1,11 @@
 use clap::ArgMatches;
 use std::io;
 
-const DEF_RADIUS: u32 = 64;
+const DEF_RADIUS: usize = 64;
 
 #[derive(Debug)]
 pub struct GenSettings {
-    pub radius: u32,
+    pub radius: usize,
     pub repeat: ImgRepeat,
     pub height_setting: CaptureHeight,
     pub img_height_mult: f32,
@@ -13,9 +13,9 @@ pub struct GenSettings {
 
 impl GenSettings {
     pub fn new_from_input(matches: &ArgMatches) -> GenSettings {
-        let radius: u32 = match matches.value_of("radius") {
+        let radius: usize = match matches.value_of("radius") {
             Some(value) => {
-                match value.trim().parse::<u32>() {
+                match value.trim().parse::<usize>() {
                     Ok(val) => val,
                     Err(_) => {
                         eprintln!("Invalid radius, setting {}", DEF_RADIUS);
@@ -66,7 +66,7 @@ impl GenSettings {
                 }
             }
         };
-        let height_mult: f32 = match matches.value_of("radius") {
+        let height_mult: f32 = match matches.value_of("mult") {
             Some(value) => {
                 match value.trim().parse::<f32>() {
                     Ok(val) => val,
@@ -85,7 +85,7 @@ impl GenSettings {
         GenSettings::new_from_values((radius, repeat, height_setting, height_mult))
     }
 
-    pub fn new_from_values(values: (u32, ImgRepeat, CaptureHeight, f32)) -> GenSettings {
+    pub fn new_from_values(values: (usize, ImgRepeat, CaptureHeight, f32)) -> GenSettings {
         GenSettings {
             radius: values.0,
             repeat: values.1,
@@ -103,7 +103,7 @@ impl GenSettings {
         }
     }
 
-    fn get_radius_input() -> u32 {
+    fn get_radius_input() -> usize {
         let mut radius = String::new();
         println!(
             "Please input search radius (preferably power of two), default is {}.",
@@ -116,7 +116,7 @@ impl GenSettings {
             println!("Setting {} as a radius.", DEF_RADIUS);
             return DEF_RADIUS;
         }
-        match radius.trim().parse::<u32>() {
+        match radius.trim().parse::<usize>() {
             Ok(value) => value,
             Err(_) => {
                 eprintln!("Invalid number, setting {} as a radius", DEF_RADIUS);
