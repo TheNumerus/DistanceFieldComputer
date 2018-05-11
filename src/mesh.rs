@@ -518,11 +518,6 @@ impl Mesh {
                 )))));
             }
         }
-        verts.sort_unstable_by(|a, b| {
-            let a_borrowed = a.borrow();
-            let b_borrowed = b.borrow();
-            a_borrowed.cmp_xy(&b_borrowed)
-        });
         Mesh {
             faces: Vec::new(),
             dimensions: dim,
