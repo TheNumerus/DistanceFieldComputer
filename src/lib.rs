@@ -1,4 +1,5 @@
 extern crate image;
+extern crate clap;
 
 pub mod extrema;
 pub mod face;

@@ -1,3 +1,4 @@
+use clap::ArgMatches;
 use std::io;
 
 const DEF_RADIUS: u32 = 64;
@@ -11,15 +12,76 @@ pub struct GenSettings {
 }
 
 impl GenSettings {
-    pub fn new_from_input() -> GenSettings {
-        let radius = GenSettings::get_radius_input();
-        println!("-------------------------");
-        let repeat = GenSettings::get_repeat_input();
-        println!("-------------------------");
-        let height_setting = GenSettings::get_height_input();
-        println!("-------------------------");
-        let height_mult = GenSettings::get_height_mult();
-        println!("-------------------------");
+    pub fn new_from_input(matches: &ArgMatches) -> GenSettings {
+        let radius: u32 = match matches.value_of("radius") {
+            Some(value) => {
+                match value.trim().parse::<u32>() {
+                    Ok(val) => val,
+                    Err(_) => {
+                        eprintln!("Invalid radius, setting {}", DEF_RADIUS);
+                        DEF_RADIUS
+                    }
+                }
+            },
+            None => {
+                let r = GenSettings::get_radius_input();
+                println!("-------------------------");
+                r
+            }
+        };
+        let repeat: ImgRepeat = match matches.value_of("repeat") {
+            Some(value) => match value {
+                "repeat" => ImgRepeat::Repeat,
+                "clamp" => ImgRepeat::Clamp,
+                "mirror" => ImgRepeat::Mirror,
+                _ => {
+                    eprintln!("Invalid option, setting Repeat");
+                    ImgRepeat::Repeat
+                }
+            },
+            None => {
+                let r = GenSettings::get_repeat_input();
+                println!("-------------------------");
+                r
+            }
+        };
+        let height_setting: CaptureHeight = match matches.value_of("height") {
+            Some(value) => {
+                match value.trim().parse::<u8>() {
+                    Ok(val) => CaptureHeight::UserDefined(val),
+                    Err(_) => {
+                        eprintln!("Invalid height, setting automatic");
+                        CaptureHeight::Generated
+                    }
+                }
+            },
+            None => {
+                match matches.occurrences_of("gen") {
+                    1 => CaptureHeight::Generated,
+                    _ => {
+                        let h = GenSettings::get_height_input();
+                        println!("-------------------------");
+                        h
+                    }
+                }
+            }
+        };
+        let height_mult: f32 = match matches.value_of("radius") {
+            Some(value) => {
+                match value.trim().parse::<f32>() {
+                    Ok(val) => val,
+                    Err(_) => {
+                        eprintln!("Invalid multiplier, setting {}", 1.0);
+                        1.0
+                    }
+                }
+            },
+            None => {
+                let h = GenSettings::get_height_mult();
+                println!("-------------------------");
+                h
+            }
+        };
         GenSettings::new_from_values((radius, repeat, height_setting, height_mult))
     }
 

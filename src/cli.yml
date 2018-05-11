@@ -1,0 +1,42 @@
+name: distance_field
+about: Simple mask computer
+args:
+    - INPUT:
+        help: Sets path to image for use
+        required: true
+        index: 1
+    - radius:
+        short: r
+        long: radius
+        value_name: RADIUS
+        help: Sets radius for computing
+        takes_value: true
+    - repeat:
+        short: i
+        long: repeat
+        value_name: REPEAT
+        help: Sets image repeat option
+        takes_value: true
+        possible_values: [repeat, clamp, mirror]
+    - height:
+        short: h
+        long: height
+        value_name: HEIGHT
+        help: Sets capture height
+        takes_value: true
+    - gen:
+        short: g
+        long: generated
+        help: Use generated height value
+        conflicts_with:
+            - height
+    - mult:
+        short: m
+        long: mult
+        value_name: MULT
+        help: Sets mesh height multiplier
+        takes_value: true
+    - export:
+        short: e
+        long: export
+        help: Exports mesh
