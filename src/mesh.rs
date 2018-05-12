@@ -20,6 +20,17 @@ const MOVES: [([f32; 2], Dir); 8] = [
 ];
 const EXPORT_SCALE: f32 = 1.0 / 100.0;
 
+#[macro_export]
+macro_rules! new_vert {
+    ($x:expr, $y:expr, $z:expr) => (
+        Rc::new(RefCell::new(Vec3::new((
+            $x,
+            $y,
+            $z
+        ))))
+    )
+}
+
 #[derive(Debug)]
 pub struct Mesh {
     pub faces: Vec<Face>,
@@ -31,9 +42,15 @@ pub struct Mesh {
 impl Mesh {
     /// Main function for generating the whole mesh
     pub fn generate(img: &DynamicImage, settings: &GenSettings) -> Mesh {
-        let mut middle = Mesh::generate_mesh_from_img(img, settings);
+        let mut middle = match settings.repeat {
+            ImgRepeat::Clamp => Mesh::generate_mesh_clamp(img, settings),
+            _ => Mesh::generate_mesh_from_img(img, settings)
+        };
         println!("Middle part generated");
-        middle.compute_out_of_range_mesh(settings);
+        match settings.repeat {
+            ImgRepeat::Clamp => (),
+            _ => middle.compute_out_of_range_mesh(settings)
+        }
         middle.compute_faces(settings);
         middle
     }
@@ -199,104 +216,134 @@ impl Mesh {
         }
     }
 
-    /// Return generated clippped version of the mesh.
-    fn clamp(mesh: &Mesh, axis: &Dir, settings: &GenSettings) -> Mesh {
-        let mut clamped = Mesh::empty_copy(mesh);
-        let bigger = if mesh.dimensions.0 > mesh.dimensions.1 {
-            mesh.dimensions.0
-        } else {
-            mesh.dimensions.1
-        };
-        let mut sub_vec: Vec<Rc<RefCell<Vec3>>> = Vec::with_capacity(bigger as usize);
-        let border = (
-            mesh.dimensions.0 as f32 - 0.5,
-            mesh.dimensions.1 as f32 - 0.5,
+    fn generate_mesh_clamp(img: &DynamicImage, settings: &GenSettings) -> Mesh {
+        let dim = img.dimensions();
+        let dim = (dim.0 as usize, dim.1 as usize);
+        let mut verts: Vec<Rc<RefCell<Vec3>>> = Vec::with_capacity((dim.0 + 2) * (dim.1 + 2));
+        // generate points in this order, so we don't have to sort them later
+        // 7 │ 8 │ 9
+        //───┼───┼───
+        // 4 │ 5 │ 6
+        //───┼───┼───
+        // 1 │ 2 │ 3
+
+        // bottom left
+        let corner_coords = (
+            -((settings.radius + 10) as f32) + 0.5,
+            -((settings.radius + 10) as f32) + 0.5
         );
-        // get points
-        match axis {
-            Dir::Left => {
-                for point in mesh.verts.iter() {
-                    let p = point.borrow();
-                    if p.x == 0.5 && !sub_vec.contains(&point) {
-                        sub_vec.push(Rc::clone(point));
-                    }
-                }
-            }
-            Dir::Up => {
-                for point in mesh.verts.iter() {
-                    let p = point.borrow();
-                    if p.y == border.1 && !sub_vec.contains(&point) {
-                        sub_vec.push(Rc::clone(point));
-                    }
-                }
-            }
-            Dir::Right => {
-                for point in mesh.verts.iter() {
-                    let p = point.borrow();
-                    if p.x == border.0 && !sub_vec.contains(&point) {
-                        sub_vec.push(Rc::clone(point));
-                    }
-                }
-            }
-            Dir::Down => {
-                for point in mesh.verts.iter() {
-                    let p = point.borrow();
-                    if p.y == 0.5 && !sub_vec.contains(&point) {
-                        sub_vec.push(Rc::clone(point));
-                    }
-                }
-            }
-            _ => panic!("Wrong option"),
+        let img_corner_coords = Mesh::mesh_to_image_coords_clamped(corner_coords, dim);
+        verts.push(new_vert!(
+            corner_coords.0,
+            corner_coords.1,
+            Mesh::compute_height(img.get_pixel(img_corner_coords.0, img_corner_coords.1).channels()[0], &settings)
+        ));
+
+        // bottom center
+        for x in 0..(dim.0) {
+            let coords = Mesh::mesh_to_image_coords_clamped((x as f32 + 0.5, 0.5), dim);
+            verts.push(new_vert!(
+                x as f32 + 0.5,
+                -((settings.radius + 10) as f32) + 0.5,
+                Mesh::compute_height(img.get_pixel(coords.0, coords.1).channels()[0], &settings)
+            ));
         }
-        // sort points
-        sub_vec.sort_unstable_by(|a, b| {
-            let a_borrowed = a.borrow();
-            let b_borrowed = b.borrow();
-            a_borrowed.cmp_x(&b_borrowed)
-        });
-        let mut verts: Vec<Rc<RefCell<Vec3>>> = Vec::new();
-        // generate mesh
-        match axis {
-            Dir::Left => {
-                for x in 0..sub_vec.len() {
-                    verts.push(Rc::new(RefCell::new(Vec3::new((
-                        (mesh.dimensions.0 - (settings.radius + 10)) as f32 + 0.5,
-                        (mesh.dimensions.1 - x) as f32 - 0.5,
-                        sub_vec[x as usize].borrow().z,
-                    )))));
-                }
+
+        // bottom right
+        let corner_coords = (
+            (dim.0 + settings.radius + 10) as f32 - 0.5,
+            -((settings.radius + 10) as f32) + 0.5
+        );
+        let img_corner_coords = Mesh::mesh_to_image_coords_clamped(corner_coords, dim);
+        verts.push(new_vert!(
+            corner_coords.0,
+            corner_coords.1,
+            Mesh::compute_height(img.get_pixel(img_corner_coords.0, img_corner_coords.1).channels()[0], &settings)
+        ));
+
+        // center row
+        for y in 0..(dim.1) {
+            // center left
+            let coords = (
+                -((settings.radius + 10) as f32) + 0.5,
+                (y as f32) + 0.5
+            );
+            let img_coords = Mesh::mesh_to_image_coords_clamped(coords, dim);
+            verts.push(new_vert!(
+                coords.0,
+                coords.1,
+                Mesh::compute_height(img.get_pixel(img_coords.0, img_coords.1).channels()[0], &settings)
+            ));
+
+            // center
+            for x in 0..(dim.0) {
+                let img_coords = Mesh::mesh_to_image_coords_clamped((x as f32 + 0.5, y as f32 + 0.5), dim);
+                verts.push(new_vert!(
+                    x as f32 + 0.5,
+                    y as f32 + 0.5,
+                    Mesh::compute_height(img.get_pixel(img_coords.0, img_coords.1).channels()[0], &settings)
+                ));
             }
-            Dir::Right => {
-                for x in 0..sub_vec.len() {
-                    verts.push(Rc::new(RefCell::new(Vec3::new((
-                        (settings.radius + 10) as f32 - 0.5,
-                        (mesh.dimensions.1 - x) as f32 - 0.5,
-                        sub_vec[x as usize].borrow().z,
-                    )))));
-                }
-            }
-            Dir::Up => {
-                for x in 0..sub_vec.len() {
-                    verts.push(Rc::new(RefCell::new(Vec3::new((
-                        x as f32 + 0.5,
-                        (settings.radius + 10) as f32 - 0.5,
-                        sub_vec[x as usize].borrow().z,
-                    )))));
-                }
-            },
-            Dir::Down => {
-                for x in 0..sub_vec.len() {
-                    verts.push(Rc::new(RefCell::new(Vec3::new((
-                        x as f32 + 0.5,
-                        (mesh.dimensions.1 - (settings.radius + 10)) as f32 + 0.5,
-                        sub_vec[x as usize].borrow().z,
-                    )))));
-                }
-            }
-            _ => panic!("Wrong option"),
-        };
-        clamped.verts = verts;
-        clamped
+
+            // center right
+            let coords = (
+                (dim.0 + settings.radius + 10) as f32 - 0.5,
+                (y as f32) + 0.5
+            );
+            let img_coords = Mesh::mesh_to_image_coords_clamped(coords, dim);
+            verts.push(new_vert!(
+                coords.0,
+                coords.1,
+                Mesh::compute_height(img.get_pixel(img_coords.0, img_coords.1).channels()[0], &settings)
+            ));
+        }
+
+        // top left
+        let corner_coords = (
+            -((settings.radius + 10) as f32) + 0.5,
+            (dim.1 + settings.radius + 10) as f32 - 0.5,
+        );
+        let img_corner_coords = Mesh::mesh_to_image_coords_clamped(corner_coords, dim);
+        verts.push(new_vert!(
+            corner_coords.0,
+            corner_coords.1,
+            Mesh::compute_height(img.get_pixel(img_corner_coords.0, img_corner_coords.1).channels()[0], &settings)
+        ));
+
+        // top center
+        for x in 0..(dim.0) {
+            let coords = Mesh::mesh_to_image_coords_clamped((x as f32 + 0.5, dim.1 as f32 - 0.5), dim);
+            verts.push(new_vert!(
+                x as f32 + 0.5,
+                (dim.1 + settings.radius + 10) as f32 - 0.5,
+                Mesh::compute_height(img.get_pixel(coords.0, coords.1).channels()[0], &settings)
+            ));
+        }
+
+        // top right
+        let corner_coords = (
+            (dim.0 + settings.radius + 10) as f32 - 0.5,
+            (dim.1 + settings.radius + 10) as f32 - 0.5,
+        );
+        let img_corner_coords = Mesh::mesh_to_image_coords_clamped(corner_coords, dim);
+        verts.push(new_vert!(
+            corner_coords.0,
+            corner_coords.1,
+            Mesh::compute_height(img.get_pixel(img_corner_coords.0, img_corner_coords.1).channels()[0], &settings)
+        ));
+
+        Mesh {
+            faces: Vec::new(),
+            dimensions: dim,
+            ext_dim: (dim.0 + 2, dim.1 + 2),
+            verts: verts,
+        }
+    }
+
+    fn mesh_to_image_coords_clamped(coords:(f32, f32), dim: (usize, usize)) -> (u32, u32) {
+        let x = clamp_to_range(coords.0 - 0.5, 0.0, (dim.0 - 1) as f32) as u32;
+        let y = (-clamp_to_range(coords.1, 0.0, (dim.1 - 1) as f32) + (dim.1 as f32 - 0.5)) as u32;
+        (x,y)
     }
 
     /// Merge two meshes together.
@@ -322,63 +369,7 @@ impl Mesh {
                 }
                 outer
             }
-            ImgRepeat::Clamp => {
-                let mut outer = Mesh::empty_copy(&self);
-                // get corner coordinates
-                // 0───1
-                // │   │
-                // 3───2
-                let corners: [f32; 4] = [
-                    self.verts[self.verts.len() - self.dimensions.0 as usize]
-                        .borrow()
-                        .z,
-                    self.verts[self.verts.len() - 1].borrow().z,
-                    self.verts[self.dimensions.0 as usize - 1].borrow().z,
-                    self.verts[0].borrow().z,
-                ];
-                for (xy, dir) in MOVES.iter() {
-                    let mut moved: Mesh;
-                    // corners
-                    if xy[0] == -1.0 && xy[1] == 1.0 {
-                        moved = Mesh::generate_corner_from_height(
-                            self.dimensions,
-                            corners[0],
-                            &settings,
-                            dir,
-                        );
-                    } else if xy[0] == 1.0 && xy[1] == 1.0 {
-                        moved = Mesh::generate_corner_from_height(
-                            self.dimensions,
-                            corners[1],
-                            &settings,
-                            dir,
-                        );
-                    } else if xy[0] == 1.0 && xy[1] == -1.0 {
-                        moved = Mesh::generate_corner_from_height(
-                            self.dimensions,
-                            corners[2],
-                            &settings,
-                            dir,
-                        );
-                    } else if xy[0] == -1.0 && xy[1] == -1.0 {
-                        moved = Mesh::generate_corner_from_height(
-                            self.dimensions,
-                            corners[3],
-                            &settings,
-                            dir,
-                        );
-                    } else {
-                        moved = Mesh::clamp(self, dir, &settings);
-                    }
-                    moved.translate(Vec3::new((
-                        self.dimensions.0 as f32 * xy[0],
-                        self.dimensions.1 as f32 * xy[1],
-                        0.0,
-                    )));
-                    outer.append_data(&mut moved);
-                }
-                outer
-            }
+            ImgRepeat::Clamp => panic!("Wrong option, cannot even happen anyway"),
             ImgRepeat::Mirror => {
                 let mut outer = Mesh::empty_copy(&self);
                 for (xy, dir) in MOVES.iter() {
@@ -406,12 +397,17 @@ impl Mesh {
 
     /// Computes faces for whole mesh with good orentation
     fn compute_faces(&mut self, settings: &GenSettings) {
-        // sort all points
-        self.verts.sort_unstable_by(|a, b| {
-            let a_borrowed = a.borrow();
-            let b_borrowed = b.borrow();
-            a_borrowed.cmp_xy(&b_borrowed)
-        });
+        // sort all points, no need for sorting clamped meshes
+        match settings.repeat {
+            ImgRepeat::Clamp => (),
+            _ => {
+                self.verts.sort_unstable_by(|a, b| {
+                    let a_borrowed = a.borrow();
+                    let b_borrowed = b.borrow();
+                    a_borrowed.cmp_xy(&b_borrowed)
+                });
+            }
+        };
         // get maximal coordinates
         // ┌─1─┐
         // 0   2
@@ -451,55 +447,6 @@ impl Mesh {
         }
         self.faces = faces;
         self.ext_dim = bounds;
-    }
-
-    /// Generate corner mesh
-    fn generate_corner_from_height(
-        dim: (usize, usize),
-        height: f32,
-        settings: &GenSettings,
-        corner: &Dir,
-    ) -> Mesh {
-        // generate main part
-        let mut verts: Vec<Rc<RefCell<Vec3>>> =
-            Vec::with_capacity(1);
-        match corner {
-            Dir::LeftUp => {
-                verts.push(Rc::new(RefCell::new(Vec3::new((
-                    (dim.0 - settings.radius) as f32 - 9.5,
-                    settings.radius as f32 + 9.5,
-                    height,
-                )))));
-            }
-            Dir::RightUp => {
-                verts.push(Rc::new(RefCell::new(Vec3::new((
-                    settings.radius as f32 + 9.5,
-                    settings.radius as f32 + 9.5,
-                    height,
-                )))));
-            }
-            Dir::RightDown => {
-                verts.push(Rc::new(RefCell::new(Vec3::new((
-                    settings.radius as f32 + 9.5,
-                    (dim.1 - settings.radius) as f32 - 9.5,
-                    height,
-                )))));
-            }
-            Dir::LeftDown => {
-                verts.push(Rc::new(RefCell::new(Vec3::new((
-                    (dim.0 - settings.radius) as f32 - 9.5,
-                    (dim.1 - settings.radius) as f32 - 9.5,
-                    height,
-                )))));
-            }
-            _ => panic!("Wrong option"),
-        };
-        Mesh {
-            faces: Vec::new(),
-            dimensions: dim,
-            ext_dim: (dim.0 + 1, dim.1 + 1),
-            verts: verts,
-        }
     }
 
     /// Generate mesh data from given image.
@@ -545,6 +492,10 @@ impl Clone for Mesh {
             verts: verts,
         }
     }
+}
+
+fn clamp_to_range(val: f32, min: f32, max: f32) -> f32 {
+    val.min(max).max(min)
 }
 
 #[derive(Debug)]
