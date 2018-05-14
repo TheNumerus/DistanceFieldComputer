@@ -32,6 +32,12 @@ pub struct Mesh {
 impl Mesh {
     /// Main function for generating the whole mesh
     pub fn generate(img: &DynamicImage, settings: &GenSettings) -> Mesh {
+        // generate points in this order, so we don't have to sort them later
+        // 7 │ 8 │ 9
+        //───┼───┼───
+        // 4 │ 5 │ 6
+        //───┼───┼───
+        // 1 │ 2 │ 3
         let mut middle = match settings.repeat {
             ImgRepeat::Repeat | ImgRepeat::Mirror => Mesh::generate_mesh(img, settings),
             ImgRepeat::Clamp => Mesh::generate_mesh_clamp(img, settings)
@@ -103,7 +109,6 @@ impl Mesh {
         );
         for y in y_low..y_high {
             for x in x_low..x_high {
-                // image axis y is positive on the way down, so we flip it
                 let coords = match settings.repeat {
                     ImgRepeat::Repeat => Mesh::mesh_to_image_coords_repeat((x as f32 + 0.5, y as f32 + 0.5), dim),
                     ImgRepeat::Mirror => Mesh::mesh_to_image_coords_mirror((x as f32 + 0.5, y as f32 + 0.5), dim),
@@ -128,63 +133,8 @@ impl Mesh {
         let dim = img.dimensions();
         let dim = (dim.0 as usize, dim.1 as usize);
         let mut verts: Vec<Rc<RefCell<Vec3>>> = Vec::with_capacity((dim.0 + 2) * (dim.1 + 2));
-        // generate points in this order, so we don't have to sort them later
-        // 7 │ 8 │ 9
-        //───┼───┼───
-        // 4 │ 5 │ 6
-        //───┼───┼───
-        // 1 │ 2 │ 3
-
-        // bottom left
-        let corner_coords = (
-            -((settings.radius + 10) as f32) + 0.5,
-            -((settings.radius + 10) as f32) + 0.5
-        );
-        let img_corner_coords = Mesh::mesh_to_image_coords_clamped(corner_coords, dim);
-        verts.push(new_vert!(
-            corner_coords.0,
-            corner_coords.1,
-            Mesh::compute_height(img.get_pixel(img_corner_coords.0, img_corner_coords.1).channels()[0], &settings)
-        ));
-
-        // bottom center
-        for x in 0..(dim.0) {
-            let coords = Mesh::mesh_to_image_coords_clamped((x as f32 + 0.5, 0.5), dim);
-            verts.push(new_vert!(
-                x as f32 + 0.5,
-                -((settings.radius + 10) as f32) + 0.5,
-                Mesh::compute_height(img.get_pixel(coords.0, coords.1).channels()[0], &settings)
-            ));
-        }
-
-        // bottom right
-        let corner_coords = (
-            (dim.0 + settings.radius + 10) as f32 - 0.5,
-            -((settings.radius + 10) as f32) + 0.5
-        );
-        let img_corner_coords = Mesh::mesh_to_image_coords_clamped(corner_coords, dim);
-        verts.push(new_vert!(
-            corner_coords.0,
-            corner_coords.1,
-            Mesh::compute_height(img.get_pixel(img_corner_coords.0, img_corner_coords.1).channels()[0], &settings)
-        ));
-
-        // center row
-        for y in 0..(dim.1) {
-            // center left
-            let coords = (
-                -((settings.radius + 10) as f32) + 0.5,
-                (y as f32) + 0.5
-            );
-            let img_coords = Mesh::mesh_to_image_coords_clamped(coords, dim);
-            verts.push(new_vert!(
-                coords.0,
-                coords.1,
-                Mesh::compute_height(img.get_pixel(img_coords.0, img_coords.1).channels()[0], &settings)
-            ));
-
-            // center
-            for x in 0..(dim.0) {
+        for y in -1..=(dim.1 as isize) {
+            for x in -1..=(dim.0 as isize) {
                 let img_coords = Mesh::mesh_to_image_coords_clamped((x as f32 + 0.5, y as f32 + 0.5), dim);
                 verts.push(new_vert!(
                     x as f32 + 0.5,
@@ -192,54 +142,7 @@ impl Mesh {
                     Mesh::compute_height(img.get_pixel(img_coords.0, img_coords.1).channels()[0], &settings)
                 ));
             }
-
-            // center right
-            let coords = (
-                (dim.0 + settings.radius + 10) as f32 - 0.5,
-                (y as f32) + 0.5
-            );
-            let img_coords = Mesh::mesh_to_image_coords_clamped(coords, dim);
-            verts.push(new_vert!(
-                coords.0,
-                coords.1,
-                Mesh::compute_height(img.get_pixel(img_coords.0, img_coords.1).channels()[0], &settings)
-            ));
         }
-
-        // top left
-        let corner_coords = (
-            -((settings.radius + 10) as f32) + 0.5,
-            (dim.1 + settings.radius + 10) as f32 - 0.5,
-        );
-        let img_corner_coords = Mesh::mesh_to_image_coords_clamped(corner_coords, dim);
-        verts.push(new_vert!(
-            corner_coords.0,
-            corner_coords.1,
-            Mesh::compute_height(img.get_pixel(img_corner_coords.0, img_corner_coords.1).channels()[0], &settings)
-        ));
-
-        // top center
-        for x in 0..(dim.0) {
-            let coords = Mesh::mesh_to_image_coords_clamped((x as f32 + 0.5, dim.1 as f32 - 0.5), dim);
-            verts.push(new_vert!(
-                x as f32 + 0.5,
-                (dim.1 + settings.radius + 10) as f32 - 0.5,
-                Mesh::compute_height(img.get_pixel(coords.0, coords.1).channels()[0], &settings)
-            ));
-        }
-
-        // top right
-        let corner_coords = (
-            (dim.0 + settings.radius + 10) as f32 - 0.5,
-            (dim.1 + settings.radius + 10) as f32 - 0.5,
-        );
-        let img_corner_coords = Mesh::mesh_to_image_coords_clamped(corner_coords, dim);
-        verts.push(new_vert!(
-            corner_coords.0,
-            corner_coords.1,
-            Mesh::compute_height(img.get_pixel(img_corner_coords.0, img_corner_coords.1).channels()[0], &settings)
-        ));
-
         Mesh {
             faces: Vec::new(),
             dimensions: dim,
