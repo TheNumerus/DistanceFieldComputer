@@ -11,13 +11,16 @@ args:
         value_name: RADIUS
         help: Sets radius for computing
         takes_value: true
+    - clamp:
+        short: c
+        long: clamp
+        help: Sets image repeat option to clamp
     - repeat:
-        short: i
+        short: p
         long: repeat
-        value_name: REPEAT
-        help: Sets image repeat option
-        takes_value: true
-        possible_values: [repeat, clamp, mirror]
+        help: Sets image repeat option to repeat
+        conflicts_with:
+            - clamp
     - height:
         short: h
         long: height

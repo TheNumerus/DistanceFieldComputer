@@ -4,7 +4,6 @@ extern crate distance_field;
 extern crate image;
 
 use clap::App;
-use distance_field::extrema::Extrema;
 use distance_field::mesh::Mesh;
 use distance_field::settings;
 use image::GenericImage;
@@ -31,8 +30,6 @@ fn main() {
     println!("Image dimensions are {:?}", img.dimensions());
     let settings = settings::GenSettings::new_from_input(&matches);
     println!("Settings: {:?}", settings);
-    let extrema = Extrema::get_image_extrema(&img);
-    println!("Extrema: {:?}", extrema);
     let now = Instant::now();
     let mesh = Mesh::generate(&img, &settings);
     let time = now.elapsed();

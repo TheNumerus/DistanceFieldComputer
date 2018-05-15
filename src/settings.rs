@@ -29,20 +29,17 @@ impl GenSettings {
                 r
             }
         };
-        let repeat: ImgRepeat = match matches.value_of("repeat") {
-            Some(value) => match value {
-                "repeat" => ImgRepeat::Repeat,
-                "clamp" => ImgRepeat::Clamp,
-                "mirror" => ImgRepeat::Mirror,
-                _ => {
-                    eprintln!("Invalid option, setting Repeat");
-                    ImgRepeat::Repeat
+        let repeat: ImgRepeat = match matches.occurrences_of("clamp") {
+            1 => ImgRepeat::Clamp,
+            _ => {
+                match matches.occurrences_of("repeat") {
+                    1 => ImgRepeat::Repeat,
+                    _ => {
+                        let r = GenSettings::get_repeat_input();
+                        println!("-------------------------");
+                        r
+                    }
                 }
-            },
-            None => {
-                let r = GenSettings::get_repeat_input();
-                println!("-------------------------");
-                r
             }
         };
         let height_setting: CaptureHeight = match matches.value_of("height") {
@@ -127,7 +124,7 @@ impl GenSettings {
 
     fn get_repeat_input() -> ImgRepeat {
         println!("Please input image repeat option, default is Repeat.");
-        println!("1 - Repeat, 2 - Clamp, 3 - Mirror");
+        println!("1 - Repeat, 2 - Clamp");
         let mut input = String::new();
         io::stdin()
             .read_line(&mut input)
@@ -140,7 +137,6 @@ impl GenSettings {
             Ok(value) => match value {
                 1 => ImgRepeat::Repeat,
                 2 => ImgRepeat::Clamp,
-                3 => ImgRepeat::Mirror,
                 _ => {
                     eprintln!("Invalid option, setting Repeat");
                     ImgRepeat::Repeat
@@ -196,7 +192,6 @@ impl GenSettings {
 pub enum ImgRepeat {
     Repeat,
     Clamp,
-    Mirror,
 }
 
 #[derive(Debug)]
