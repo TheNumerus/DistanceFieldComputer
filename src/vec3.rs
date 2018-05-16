@@ -46,8 +46,8 @@ impl Vec3 {
         ))
     }
 
-    pub fn distance_to(self, other: &Vec3) -> f32 {
-        (&self - other).len()
+    pub fn distance_to(&self, other: &Vec3) -> f32 {
+        (self - other).len()
     }
 
     pub fn to_vec4(&self) -> Vec4 {

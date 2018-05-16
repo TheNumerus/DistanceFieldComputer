@@ -25,8 +25,8 @@ macro_rules! new_vert {
 #[derive(Debug)]
 pub struct Mesh {
     pub faces: Vec<Face>,
-    dimensions: (usize, usize),
-    ext_dim: (usize, usize),
+    pub dimensions: (usize, usize),
+    pub ext_dim: (usize, usize),
     usable_radius: usize,
     pub verts: Vec<Rc<RefCell<Vec3>>>,
 }
@@ -236,6 +236,6 @@ impl Clone for Mesh {
     }
 }
 
-fn clamp_to_range(val: f32, min: f32, max: f32) -> f32 {
+pub fn clamp_to_range(val: f32, min: f32, max: f32) -> f32 {
     val.min(max).max(min)
 }

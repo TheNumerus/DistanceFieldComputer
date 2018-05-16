@@ -4,9 +4,11 @@ extern crate distance_field;
 extern crate image;
 
 use clap::App;
+use distance_field::extrema::Extrema;
 use distance_field::mesh::Mesh;
 use distance_field::settings;
-use image::GenericImage;
+use distance_field::generator;
+use image::{GenericImage, ImageLuma8};
 use std::io;
 use std::path::PathBuf;
 use std::process;
@@ -42,6 +44,14 @@ fn main() {
         mesh.faces.iter().count(),
         mesh.verts.iter().count()
     );
+    let ext = Extrema::get_image_extrema(&img);
+    let now = Instant::now();
+    let distances = generator::generate_distances(&mesh, &settings, &ext);
+    let time = now.elapsed();
+    println!(
+        "Distances computed in {}",
+        time.as_secs() as f64 + time.subsec_nanos() as f64 * 1e-9
+    );
     match matches.occurrences_of("export") {
         1 => {
             let now = Instant::now();
@@ -57,7 +67,8 @@ fn main() {
     // separate image into buffers
     // compute buffer
     // save image
-    match img.save(get_output_filename(&input)) {
+    let out_img = generator::generate_image(mesh.dimensions, &distances);
+    match ImageLuma8(out_img).save(get_output_filename(&input)) {
         Ok(_) => {
             println!("Image saved successfully");
         }
