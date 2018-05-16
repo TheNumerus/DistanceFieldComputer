@@ -27,7 +27,7 @@ pub struct Mesh {
     pub faces: Vec<Face>,
     pub dimensions: (usize, usize),
     pub ext_dim: (usize, usize),
-    usable_radius: usize,
+    pub usable_radius: usize,
     pub verts: Vec<Rc<RefCell<Vec3>>>,
 }
 
@@ -132,9 +132,9 @@ impl Mesh {
         Mesh {
             faces: Vec::new(),
             dimensions: dim,
-            ext_dim: dim,
+            ext_dim: (dim.0 + 2 * max_radius, dim.1 + 2 * max_radius),
             verts: verts,
-            usable_radius: max_radius
+            usable_radius: max_radius.min((dim.0).min(dim.1))
         }
     }
 
@@ -157,7 +157,7 @@ impl Mesh {
             dimensions: dim,
             ext_dim: (dim.0 + 2, dim.1 + 2),
             verts: verts,
-            usable_radius: settings.radius
+            usable_radius: 1
         }
     }
 
@@ -193,6 +193,7 @@ impl Mesh {
             _ => (self.dimensions.0 - 1 + 2 * self.usable_radius, self.dimensions.1 - 1 + 2 * self.usable_radius)
         };
         // compute faces
+        println!("{:?}", bounds);
         let mut faces: Vec<Face> = Vec::with_capacity(bounds.0 * bounds.1 * 2);
         for x in 0..bounds.0 {
             for y in 0..bounds.1 {
