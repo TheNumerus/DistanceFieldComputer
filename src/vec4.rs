@@ -40,24 +40,14 @@ impl PartialEq for Vec4 {
 impl<'a> Sub<&'a Vec4> for &'a Vec4 {
     type Output = Vec4;
     fn sub(self, other: &'a Vec4) -> Vec4 {
-        Vec4::new((
-            self.x - other.x,
-            self.y - other.y,
-            self.z - other.z,
-            self.w - other.w,
-        ))
+        Vec4::new((self.x - other.x, self.y - other.y, self.z - other.z, self.w - other.w))
     }
 }
 
 impl<'a> Add<&'a Vec4> for &'a Vec4 {
     type Output = Vec4;
     fn add(self, other: &'a Vec4) -> Vec4 {
-        Vec4::new((
-            self.x + other.x,
-            self.y + other.y,
-            self.z + other.z,
-            self.w - other.w,
-        ))
+        Vec4::new((self.x + other.x, self.y + other.y, self.z + other.z, self.w - other.w))
     }
 }
 

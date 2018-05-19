@@ -5,14 +5,7 @@ pub struct Mat44 {
 }
 
 impl Mat44 {
-    pub fn new(
-        c: (
-            (f32, f32, f32, f32),
-            (f32, f32, f32, f32),
-            (f32, f32, f32, f32),
-            (f32, f32, f32, f32),
-        ),
-    ) -> Mat44 {
+    pub fn new(c: ((f32, f32, f32, f32), (f32, f32, f32, f32), (f32, f32, f32, f32), (f32, f32, f32, f32))) -> Mat44 {
         Mat44 {
             coefficents: [
                 [(c.0).0, (c.0).1, (c.0).2, (c.0).3],

@@ -51,12 +51,7 @@ impl Mesh {
         let mut data = String::from("");
         for point in self.verts.iter() {
             let p = point.borrow();
-            data.push_str(&format!(
-                "v {} {} {}\n",
-                p.x * EXPORT_SCALE,
-                p.y * EXPORT_SCALE,
-                p.z * EXPORT_SCALE
-            ));
+            data.push_str(&format!("v {} {} {}\n", p.x * EXPORT_SCALE, p.y * EXPORT_SCALE, p.z * EXPORT_SCALE));
         }
         println!("All points written.");
         let points_in_row = match settings.repeat {
@@ -102,8 +97,7 @@ impl Mesh {
             CaptureHeight::Generated => ext.max,
             CaptureHeight::UserDefined(val) => val,
         };
-        let max_radius = (settings.radius as f32 * ((height - ext.min) as f32 / 255.0)
-            * settings.img_height_mult) as usize;
+        let max_radius = (settings.radius as f32 * ((height - ext.min) as f32 / 255.0) * settings.img_height_mult) as usize;
         let max_radius = max_radius.min(settings.radius);
 
         let vec_size = (dim.0 + max_radius) * (dim.1 + max_radius);
@@ -118,15 +112,11 @@ impl Mesh {
         );
         for y in y_low..y_high {
             for x in x_low..x_high {
-                let coords =
-                    Mesh::mesh_to_image_coords_repeat((x as f32 + 0.5, y as f32 + 0.5), dim);
+                let coords = Mesh::mesh_to_image_coords_repeat((x as f32 + 0.5, y as f32 + 0.5), dim);
                 verts.push(new_vert!(
                     x as f32 + 0.5,
                     y as f32 + 0.5,
-                    Mesh::compute_height(
-                        img.get_pixel(coords.0, coords.1).channels()[0],
-                        &settings
-                    )
+                    Mesh::compute_height(img.get_pixel(coords.0, coords.1).channels()[0], &settings)
                 ));
             }
         }
@@ -145,15 +135,11 @@ impl Mesh {
         let mut verts: Vec<Rc<RefCell<Vec3>>> = Vec::with_capacity((dim.0 + 2) * (dim.1 + 2));
         for y in -1..=(dim.1 as isize) {
             for x in -1..=(dim.0 as isize) {
-                let img_coords =
-                    Mesh::mesh_to_image_coords_clamped((x as f32 + 0.5, y as f32 + 0.5), dim);
+                let img_coords = Mesh::mesh_to_image_coords_clamped((x as f32 + 0.5, y as f32 + 0.5), dim);
                 verts.push(new_vert!(
                     x as f32 + 0.5,
                     y as f32 + 0.5,
-                    Mesh::compute_height(
-                        img.get_pixel(img_coords.0, img_coords.1).channels()[0],
-                        &settings
-                    )
+                    Mesh::compute_height(img.get_pixel(img_coords.0, img_coords.1).channels()[0], &settings)
                 ));
             }
         }
@@ -195,10 +181,7 @@ impl Mesh {
     fn compute_faces(&mut self, settings: &GenSettings) {
         let bounds: (usize, usize) = match settings.repeat {
             ImgRepeat::Clamp => (self.dimensions.0 + 1, self.dimensions.1 + 1),
-            _ => (
-                self.dimensions.0 - 1 + 2 * self.usable_radius,
-                self.dimensions.1 - 1 + 2 * self.usable_radius,
-            ),
+            _ => (self.dimensions.0 - 1 + 2 * self.usable_radius, self.dimensions.1 - 1 + 2 * self.usable_radius),
         };
         // compute faces
         println!("{:?}", bounds);

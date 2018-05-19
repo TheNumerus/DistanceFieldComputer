@@ -4,25 +4,21 @@ use mesh::Mesh;
 use settings::{CaptureHeight, GenSettings, ImgRepeat};
 use std::cmp::Ordering;
 use std::f32;
+use std::io::stdout;
+use std::io::Write;
 use vec3::Vec3;
 
 pub fn generate_distances(mesh: &Mesh, settings: &GenSettings, ext: &Extrema) -> Vec<f32> {
     let mut distances: Vec<f32> = Vec::with_capacity(mesh.dimensions.0 * mesh.dimensions.1);
     let capture_height = match settings.height_setting {
-        CaptureHeight::Generated => {
-            (ext.max as f32 / 255.0) * settings.radius as f32 * settings.img_height_mult
-        }
-        CaptureHeight::UserDefined(val) => {
-            (val as f32 / 255.0) * settings.radius as f32 * settings.img_height_mult
-        }
+        CaptureHeight::Generated => (ext.max as f32 / 255.0) * settings.radius as f32 * settings.img_height_mult,
+        CaptureHeight::UserDefined(val) => (val as f32 / 255.0) * settings.radius as f32 * settings.img_height_mult,
     };
     // get minimal distances
     let mut floor_distances: Vec<f32> = Vec::with_capacity(mesh.dimensions.0 * mesh.dimensions.1);
     for point in mesh.verts.iter() {
         let point = point.borrow();
-        if point.x > 0.0 && point.x < mesh.dimensions.0 as f32 && point.y > 0.0
-            && point.y < mesh.dimensions.1 as f32
-        {
+        if point.x > 0.0 && point.x < mesh.dimensions.0 as f32 && point.y > 0.0 && point.y < mesh.dimensions.1 as f32 {
             floor_distances.push(point.z);
         }
     }
@@ -38,12 +34,8 @@ pub fn generate_distances(mesh: &Mesh, settings: &GenSettings, ext: &Extrema) ->
             }
         }
         ImgRepeat::Clamp => {
-            for y in -(settings.radius.min(mesh.dimensions.0) as isize)
-                ..=settings.radius.min(mesh.dimensions.0) as isize
-            {
-                for x in -(settings.radius.min(mesh.dimensions.1) as isize)
-                    ..=settings.radius.min(mesh.dimensions.1) as isize
-                {
+            for y in -(settings.radius.min(mesh.dimensions.0) as isize)..=settings.radius.min(mesh.dimensions.0) as isize {
+                for x in -(settings.radius.min(mesh.dimensions.1) as isize)..=settings.radius.min(mesh.dimensions.1) as isize {
                     spiral.push((x, y));
                 }
             }
@@ -72,20 +64,15 @@ pub fn generate_distances(mesh: &Mesh, settings: &GenSettings, ext: &Extrema) ->
             for (x_sp, y_sp) in spiral.iter() {
                 let x_act = x as isize + *x_sp;
                 let y_act = y as isize + *y_sp;
-                if (x_act as f32 - capture_point.x).abs() > dst
-                    || (y_act as f32 - capture_point.y).abs() > dst
-                {
+                if (x_act as f32 - capture_point.x).abs() > dst || (y_act as f32 - capture_point.y).abs() > dst {
                     break;
                 }
                 if let ImgRepeat::Clamp = settings.repeat {
-                    if x_act < 0 || x_act > mesh.dimensions.0 as isize || y_act < 0
-                        || y_act > mesh.dimensions.1 as isize
-                    {
+                    if x_act < 0 || x_act > mesh.dimensions.0 as isize || y_act < 0 || y_act > mesh.dimensions.1 as isize {
                         continue;
                     }
                 }
-                let index = (zero_index as isize + x_act as isize
-                    + ((mesh.ext_dim.0 as isize + 1) * y_act)) as usize;
+                let index = (zero_index as isize + x_act as isize + ((mesh.ext_dim.0 as isize + 1) * y_act)) as usize;
                 let point = &(mesh.verts[index]).borrow();
                 let dst_to_point = point.distance_to(&capture_point);
                 if dst_to_point < dst {
@@ -94,8 +81,10 @@ pub fn generate_distances(mesh: &Mesh, settings: &GenSettings, ext: &Extrema) ->
             }
             distances.push(dst);
         }
-        println!("{}", y as f32 / mesh.dimensions.1 as f32);
+        print!("\r{:.2} % done    ", (y + 1) as f32 / mesh.dimensions.1 as f32 * 100.0);
+        stdout().flush().unwrap();
     }
+    print!("\n");
     distances
 }
 
