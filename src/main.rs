@@ -5,9 +5,9 @@ extern crate image;
 
 use clap::App;
 use distance_field::extrema::Extrema;
+use distance_field::generator;
 use distance_field::mesh::Mesh;
 use distance_field::settings;
-use distance_field::generator;
 use image::{GenericImage, ImageLuma8};
 use std::io;
 use std::path::PathBuf;
@@ -61,8 +61,8 @@ fn main() {
                 "Mesh exported in {}",
                 time.as_secs() as f64 + time.subsec_nanos() as f64 * 1e-9
             );
-        },
-        _ => ()
+        }
+        _ => (),
     }
     // separate image into buffers
     // compute buffer

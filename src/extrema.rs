@@ -49,17 +49,17 @@ impl Extrema {
         // generate coord tupples
         let mut coords: Vec<(u32, u32)> = Vec::new();
         for x in 0..dim.0 {
-            coords.push((x,0));
-            coords.push((x,dim.1 - 1));
+            coords.push((x, 0));
+            coords.push((x, dim.1 - 1));
         }
         for y in 1..(dim.1 - 1) {
-            coords.push((0,y));
+            coords.push((0, y));
             coords.push((dim.0 - 1, y));
         }
 
-        for (x,y) in coords.iter() {
+        for (x, y) in coords.iter() {
             // only get the red channel, since all images should be monochrome
-            let value = img.get_pixel(*x,*y).channels()[0];
+            let value = img.get_pixel(*x, *y).channels()[0];
             if value > e.max {
                 e.max = value
             }

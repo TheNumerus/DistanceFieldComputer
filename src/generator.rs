@@ -1,22 +1,28 @@
 use extrema::Extrema;
-use mesh::{clamp_to_range, Mesh};
 use image::{ImageBuffer, Luma};
-use vec3::Vec3;
-use settings::{GenSettings, CaptureHeight, ImgRepeat};
+use mesh::Mesh;
+use settings::{CaptureHeight, GenSettings, ImgRepeat};
 use std::cmp::Ordering;
 use std::f32;
+use vec3::Vec3;
 
 pub fn generate_distances(mesh: &Mesh, settings: &GenSettings, ext: &Extrema) -> Vec<f32> {
-    let mut distances: Vec<f32> = Vec::new();
+    let mut distances: Vec<f32> = Vec::with_capacity(mesh.dimensions.0 * mesh.dimensions.1);
     let capture_height = match settings.height_setting {
-        CaptureHeight::Generated => (ext.max as f32 / 255.0) * settings.radius as f32 * settings.img_height_mult,
-        CaptureHeight::UserDefined(val) => (val as f32 / 255.0) * settings.radius as f32 * settings.img_height_mult
+        CaptureHeight::Generated => {
+            (ext.max as f32 / 255.0) * settings.radius as f32 * settings.img_height_mult
+        }
+        CaptureHeight::UserDefined(val) => {
+            (val as f32 / 255.0) * settings.radius as f32 * settings.img_height_mult
+        }
     };
     // get minimal distances
     let mut floor_distances: Vec<f32> = Vec::with_capacity(mesh.dimensions.0 * mesh.dimensions.1);
     for point in mesh.verts.iter() {
         let point = point.borrow();
-        if point.x > 0.0 && point.x < mesh.dimensions.0 as f32 && point.y > 0.0 && point.y < mesh.dimensions.1 as f32 {
+        if point.x > 0.0 && point.x < mesh.dimensions.0 as f32 && point.y > 0.0
+            && point.y < mesh.dimensions.1 as f32
+        {
             floor_distances.push(point.z);
         }
     }
@@ -26,20 +32,24 @@ pub fn generate_distances(mesh: &Mesh, settings: &GenSettings, ext: &Extrema) ->
     match settings.repeat {
         ImgRepeat::Repeat => {
             for y in -(mesh.usable_radius as isize)..=mesh.usable_radius as isize {
-                for x in -(mesh.usable_radius as isize)..=mesh.usable_radius as isize{
-                    spiral.push((x,y));
+                for x in -(mesh.usable_radius as isize)..=mesh.usable_radius as isize {
+                    spiral.push((x, y));
                 }
             }
-        },
+        }
         ImgRepeat::Clamp => {
-            for y in -(settings.radius.min(mesh.dimensions.0) as isize)..=settings.radius.min(mesh.dimensions.0) as isize {
-                for x in -(settings.radius.min(mesh.dimensions.1) as isize)..=settings.radius.min(mesh.dimensions.1) as isize{
-                    spiral.push((x,y));
+            for y in -(settings.radius.min(mesh.dimensions.0) as isize)
+                ..=settings.radius.min(mesh.dimensions.0) as isize
+            {
+                for x in -(settings.radius.min(mesh.dimensions.1) as isize)
+                    ..=settings.radius.min(mesh.dimensions.1) as isize
+                {
+                    spiral.push((x, y));
                 }
             }
         }
     }
-    spiral.sort_unstable_by( |a,b| {
+    spiral.sort_unstable_by(|a, b| {
         let a_sqr = (a.0 as f32).powi(2) + (a.1 as f32).powi(2);
         let b_sqr = (b.0 as f32).powi(2) + (b.1 as f32).powi(2);
         if a_sqr > b_sqr {
@@ -51,47 +61,41 @@ pub fn generate_distances(mesh: &Mesh, settings: &GenSettings, ext: &Extrema) ->
         }
     });
     println!("Spiral field done, {} points", spiral.len());
-    // so far, im using only approx. algorithm which only considers points
-    let zero_index = (mesh.ext_dim.0  + 1) * mesh.usable_radius + mesh.usable_radius;
-    println!("{:?}", zero_index);
+
+    let zero_index = (mesh.ext_dim.0 + 1) * mesh.usable_radius + mesh.usable_radius;
     for y in 0..mesh.dimensions.1 {
         for x in 0..mesh.dimensions.0 {
             let capture_point = Vec3::new((x as f32 + 0.5, y as f32 + 0.5, capture_height));
-            let dst_to_floor = capture_height - floor_distances[y * (mesh.dimensions.0) + x];
+            let base_dst = floor_distances[y * (mesh.dimensions.0) + x];
+            let dst_to_floor = capture_height - base_dst;
             let mut dst = dst_to_floor;
             for (x_sp, y_sp) in spiral.iter() {
                 let x_act = x as isize + *x_sp;
                 let y_act = y as isize + *y_sp;
-                match settings.repeat {
-                    ImgRepeat::Clamp => {
-                        if x_act < 0 || x_act > mesh.dimensions.0 as isize || y_act < 0 || y_act > mesh.dimensions.1 as isize {
-                            //println!("{:?}, {:?}", x_act, y_act);
-                            continue;
-                        }
-                    },
-                    _ => ()
-                };
-                //println!("Point: {:?}, {:?}", x_act, y_act);
-                let index = (zero_index as isize + x_act as isize + ((mesh.ext_dim.0 as isize + 1) * y_act)) as usize;
-                //println!("Index: {:?}", index);
-                let point = &mesh.verts[index];
-                let point = point.borrow();
-                if (point.x - capture_point.x).abs() > dst || (point.y - capture_point.y).abs() > dst {
+                if (x_act as f32 - capture_point.x).abs() > dst
+                    || (y_act as f32 - capture_point.y).abs() > dst
+                {
                     break;
                 }
-                if ((point.x - capture_point.x).powi(2) + (point.y - capture_point.y).powi(2)) < dst.powi(2) {
-                    let dst_to_point = point.distance_to(&capture_point);
-                    if dst_to_point < dst {
-                        dst = dst_to_point;
+                if let ImgRepeat::Clamp = settings.repeat {
+                    if x_act < 0 || x_act > mesh.dimensions.0 as isize || y_act < 0
+                        || y_act > mesh.dimensions.1 as isize
+                    {
+                        continue;
                     }
+                }
+                let index = (zero_index as isize + x_act as isize
+                    + ((mesh.ext_dim.0 as isize + 1) * y_act)) as usize;
+                let point = &(mesh.verts[index]).borrow();
+                let dst_to_point = point.distance_to(&capture_point);
+                if dst_to_point < dst {
+                    dst = dst_to_point;
                 }
             }
             distances.push(dst);
         }
-        println!("{}", y);
+        println!("{}", y as f32 / mesh.dimensions.1 as f32);
     }
-    //println!("Distances count: {:?}", distances.len());
-    //println!("Distances: {:?}", distances);
     distances
 }
 

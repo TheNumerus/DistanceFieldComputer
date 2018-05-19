@@ -1,5 +1,6 @@
-extern crate image;
 extern crate clap;
+extern crate image;
+extern crate rayon;
 
 pub mod extrema;
 pub mod face;
