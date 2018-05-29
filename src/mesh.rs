@@ -2,11 +2,10 @@ use extrema::Extrema;
 use face::Face;
 use image::{DynamicImage, GenericImage, Pixel};
 use settings::{CaptureHeight, GenSettings, ImgRepeat};
-use std::cell::RefCell;
 use std::f32;
 use std::fs::File;
 use std::io::Write;
-use std::rc::Rc;
+use std::sync::Arc;
 use vec3::Vec3;
 
 const EXPORT_SCALE: f32 = 1.0 / 100.0;
@@ -14,7 +13,7 @@ const EXPORT_SCALE: f32 = 1.0 / 100.0;
 #[macro_export]
 macro_rules! new_vert {
     ($x:expr, $y:expr, $z:expr) => {
-        Rc::new(RefCell::new(Vec3::new(($x, $y, $z))))
+        Arc::new(Vec3::new(($x, $y, $z)))
     };
 }
 
@@ -24,7 +23,7 @@ pub struct Mesh {
     pub dimensions: (usize, usize),
     pub ext_dim: (usize, usize),
     pub usable_radius: usize,
-    pub verts: Vec<Rc<RefCell<Vec3>>>,
+    pub verts: Vec<Arc<Vec3>>,
 }
 
 impl Mesh {
@@ -50,7 +49,7 @@ impl Mesh {
         let mut file = File::create(filename).unwrap();
         let mut data = String::from("");
         for point in self.verts.iter() {
-            let p = point.borrow();
+            let p = point;
             data.push_str(&format!("v {} {} {}\n", p.x * EXPORT_SCALE, p.y * EXPORT_SCALE, p.z * EXPORT_SCALE));
         }
         println!("All points written.");
@@ -101,7 +100,7 @@ impl Mesh {
         let max_radius = max_radius.min(settings.radius);
 
         let vec_size = (dim.0 + max_radius) * (dim.1 + max_radius);
-        let mut verts: Vec<Rc<RefCell<Vec3>>> = Vec::with_capacity(vec_size);
+        let mut verts: Vec<Arc<Vec3>> = Vec::with_capacity(vec_size);
 
         // fix for images with radius bigger than image dimension
         let (x_low, x_high, y_low, y_high) = (
@@ -132,7 +131,17 @@ impl Mesh {
     fn generate_mesh_clamp(img: &DynamicImage, settings: &GenSettings) -> Mesh {
         let dim = img.dimensions();
         let dim = (dim.0 as usize, dim.1 as usize);
-        let mut verts: Vec<Rc<RefCell<Vec3>>> = Vec::with_capacity((dim.0 + 2) * (dim.1 + 2));
+
+        // get maximal usable radius
+        let ext = Extrema::get_border_extrema(&img);
+        let height = match settings.height_setting {
+            CaptureHeight::Generated => ext.max,
+            CaptureHeight::UserDefined(val) => val,
+        };
+        let max_radius = (settings.radius as f32 * ((height - ext.min) as f32 / 255.0) * settings.img_height_mult) as usize;
+        let max_radius = max_radius.min(settings.radius);
+
+        let mut verts: Vec<Arc<Vec3>> = Vec::with_capacity((dim.0 + 2) * (dim.1 + 2));
         for y in -1..=(dim.1 as isize) {
             for x in -1..=(dim.0 as isize) {
                 let img_coords = Mesh::mesh_to_image_coords_clamped((x as f32 + 0.5, y as f32 + 0.5), dim);
@@ -148,7 +157,7 @@ impl Mesh {
             dimensions: dim,
             ext_dim: (dim.0 + 2, dim.1 + 2),
             verts: verts,
-            usable_radius: 1,
+            usable_radius: max_radius.min((dim.0).min(dim.1)),
         }
     }
 
@@ -191,14 +200,14 @@ impl Mesh {
                 let lower_i = y * bounds.0 + x;
                 let upper_i = (y + 1) * bounds.0 + x;
                 faces.push(Face::new(
-                    Rc::clone(&self.verts[upper_i + 1]),
-                    Rc::clone(&self.verts[upper_i]),
-                    Rc::clone(&self.verts[lower_i]),
+                    Arc::clone(&self.verts[upper_i + 1]),
+                    Arc::clone(&self.verts[upper_i]),
+                    Arc::clone(&self.verts[lower_i]),
                 ));
                 faces.push(Face::new(
-                    Rc::clone(&self.verts[upper_i + 1]),
-                    Rc::clone(&self.verts[lower_i]),
-                    Rc::clone(&self.verts[lower_i + 1]),
+                    Arc::clone(&self.verts[upper_i + 1]),
+                    Arc::clone(&self.verts[lower_i]),
+                    Arc::clone(&self.verts[lower_i + 1]),
                 ));
             }
         }
@@ -214,9 +223,9 @@ impl Mesh {
 
 impl Clone for Mesh {
     fn clone(&self) -> Mesh {
-        let mut verts: Vec<Rc<RefCell<Vec3>>> = Vec::new();
+        let mut verts: Vec<Arc<Vec3>> = Vec::new();
         for vert in self.verts.iter() {
-            verts.push(Rc::new(RefCell::new(vert.borrow().clone())));
+            verts.push(Arc::new((**vert).clone()));
         }
         Mesh {
             faces: self.faces.clone(),
