@@ -13,14 +13,6 @@ pub fn generate_distances(mesh: &Mesh, settings: &GenSettings, ext: &Extrema) ->
         CaptureHeight::Generated => (ext.max as f32 / 255.0) * settings.radius as f32 * settings.img_height_mult,
         CaptureHeight::UserDefined(val) => (val as f32 / 255.0) * settings.radius as f32 * settings.img_height_mult,
     };
-    // get minimal distances
-    let mut floor_distances: Vec<f32> = Vec::with_capacity(mesh.dimensions.0 * mesh.dimensions.1);
-    for point in mesh.verts.iter() {;
-        if point.x > 0.0 && point.x < mesh.dimensions.0 as f32 && point.y > 0.0 && point.y < mesh.dimensions.1 as f32 {
-            floor_distances.push(point.z);
-        }
-    }
-    println!("Floor field done, {} points", floor_distances.len());
     //generate spiral for generating distances
     let mut spiral: Vec<(isize, isize)> = Vec::new();
     for y in -(mesh.usable_radius as isize)..=mesh.usable_radius as isize {
@@ -40,6 +32,7 @@ pub fn generate_distances(mesh: &Mesh, settings: &GenSettings, ext: &Extrema) ->
         }
     });
     println!("Spiral field done, {} points", spiral.len());
+    
     let zero_index = match settings.repeat {
         ImgRepeat::Repeat => ((mesh.ext_dim.0 + 1) * mesh.usable_radius + mesh.usable_radius) as isize,
         ImgRepeat::Clamp => ((mesh.ext_dim.0 + 1) * 1 + 1) as isize,
@@ -47,9 +40,7 @@ pub fn generate_distances(mesh: &Mesh, settings: &GenSettings, ext: &Extrema) ->
     
     let get_distance = |x: usize, y: usize| {
         let capture_point = Vec3::new((x as f32 + 0.5, y as f32 + 0.5, capture_height));
-        let base_dst = floor_distances[y * (mesh.dimensions.0) + x];
-        let dst_to_floor = (capture_height - base_dst).abs();
-        let mut dst = dst_to_floor;
+        let mut dst = f32::MAX;
         for (x_sp, y_sp) in spiral.iter() {
             let x_act = x as isize + *x_sp;
             let y_act = y as isize + *y_sp;
