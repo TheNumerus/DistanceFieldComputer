@@ -57,7 +57,7 @@ impl Extrema {
             coords.push((dim.0 - 1, y));
         }
 
-        for (x, y) in coords.iter() {
+        for (x, y) in &coords {
             // only get the red channel, since all images should be monochrome
             let value = img.get_pixel(*x, *y).channels()[0];
             if value > e.max {

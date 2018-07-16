@@ -94,7 +94,7 @@ impl GenSettings {
         let mut radius = String::new();
         println!("Please input search radius (preferably power of two), default is {}.", DEF_RADIUS);
         io::stdin().read_line(&mut radius).expect("Failed to read input");
-        if radius.trim().len() == 0 {
+        if radius.trim().is_empty() {
             println!("Setting {} as a radius.", DEF_RADIUS);
             return DEF_RADIUS;
         }
@@ -112,7 +112,7 @@ impl GenSettings {
         println!("1 - Repeat, 2 - Clamp");
         let mut input = String::new();
         io::stdin().read_line(&mut input).expect("Failed to read input");
-        if input.trim().len() == 0 {
+        if input.trim().is_empty() {
             println!("Setting Repeat.");
             return ImgRepeat::Repeat;
         }
@@ -136,7 +136,7 @@ impl GenSettings {
         println!("Please input capture height, or press enter for automatic computation.");
         let mut input = String::new();
         io::stdin().read_line(&mut input).expect("Failed to read input");
-        if input.trim().len() == 0 {
+        if input.trim().is_empty() {
             println!("Setting automatic.");
             return CaptureHeight::Generated;
         }
@@ -153,7 +153,7 @@ impl GenSettings {
         println!("Please input height multipiler, 1.0 is radius height and default.");
         let mut input = String::new();
         io::stdin().read_line(&mut input).expect("Failed to read input");
-        if input.trim().len() == 0 {
+        if input.trim().is_empty() {
             println!("Setting 1.0x.");
             return 1.0;
         }
@@ -164,6 +164,12 @@ impl GenSettings {
                 1.0
             }
         }
+    }
+}
+
+impl Default for GenSettings {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

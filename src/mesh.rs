@@ -1,5 +1,4 @@
 use extrema::Extrema;
-use face::Face;
 use image::{DynamicImage, GenericImage, Pixel};
 use settings::{CaptureHeight, GenSettings, ImgRepeat};
 use std::f32;
@@ -19,7 +18,6 @@ macro_rules! new_vert {
 
 #[derive(Debug)]
 pub struct Mesh {
-    pub faces: Vec<Face>,
     pub dimensions: (usize, usize),
     pub ext_dim: (usize, usize),
     pub usable_radius: usize,
@@ -39,8 +37,12 @@ impl Mesh {
             ImgRepeat::Repeat => Mesh::generate_mesh(img, settings),
             ImgRepeat::Clamp => Mesh::generate_mesh_clamp(img, settings),
         };
+        let bounds: (usize, usize) = match settings.repeat {
+            ImgRepeat::Clamp => (middle.dimensions.0 + 1, middle.dimensions.1 + 1),
+            _ => (middle.dimensions.0 - 1 + 2 * middle.usable_radius, middle.dimensions.1 - 1 + 2 * middle.usable_radius),
+        };
+        middle.ext_dim = bounds;
         println!("Points generated");
-        middle.compute_faces(settings);
         middle
     }
 
@@ -48,7 +50,7 @@ impl Mesh {
     pub fn export(&self, filename: &str, settings: &GenSettings) {
         let mut file = File::create(filename).unwrap();
         let mut data = String::from("");
-        for point in self.verts.iter() {
+        for point in &self.verts {
             let p = point;
             data.push_str(&format!("v {} {} {}\n", p.x * EXPORT_SCALE, p.y * EXPORT_SCALE, p.z * EXPORT_SCALE));
         }
@@ -58,7 +60,7 @@ impl Mesh {
             _ => self.ext_dim.0 + 1,
         };
         println!("{:?}", points_in_row);
-        for (i, _face) in self.faces.iter().enumerate() {
+        for i in 0..(self.verts.iter().count() * 2) {
             let row = (i / 2) / (points_in_row - 1);
             let pos_in_row = i - row * (points_in_row - 1) * 2;
             match i % 2 {
@@ -96,7 +98,7 @@ impl Mesh {
             CaptureHeight::Generated => ext.max,
             CaptureHeight::UserDefined(val) => val,
         };
-        let max_radius = (settings.radius as f32 * ((height - ext.min) as f32 / 255.0) * settings.img_height_mult) as usize;
+        let max_radius = (settings.radius as f32 * (f32::from(height - ext.min) / 255.0) * settings.img_height_mult) as usize;
         let max_radius = max_radius.min(settings.radius);
 
         let vec_size = (dim.0 + max_radius) * (dim.1 + max_radius);
@@ -120,10 +122,9 @@ impl Mesh {
             }
         }
         Mesh {
-            faces: Vec::new(),
             dimensions: dim,
             ext_dim: (dim.0 + 2 * max_radius, dim.1 + 2 * max_radius),
-            verts: verts,
+            verts,
             usable_radius: max_radius.min((dim.0).min(dim.1)),
         }
     }
@@ -138,7 +139,7 @@ impl Mesh {
             CaptureHeight::Generated => ext.max,
             CaptureHeight::UserDefined(val) => val,
         };
-        let max_radius = (settings.radius as f32 * ((height - ext.min) as f32 / 255.0) * settings.img_height_mult) as usize;
+        let max_radius = (settings.radius as f32 * (f32::from(height - ext.min) / 255.0) * settings.img_height_mult) as usize;
         let max_radius = max_radius.min(settings.radius);
 
         let mut verts: Vec<Arc<Vec3>> = Vec::with_capacity((dim.0 + 2) * (dim.1 + 2));
@@ -153,10 +154,9 @@ impl Mesh {
             }
         }
         Mesh {
-            faces: Vec::new(),
             dimensions: dim,
             ext_dim: (dim.0 + 2, dim.1 + 2),
-            verts: verts,
+            verts,
             usable_radius: max_radius.min((dim.0).min(dim.1)),
         }
     }
@@ -186,52 +186,22 @@ impl Mesh {
         (x, y)
     }
 
-    /// Computes faces for whole mesh with good orentation
-    fn compute_faces(&mut self, settings: &GenSettings) {
-        let bounds: (usize, usize) = match settings.repeat {
-            ImgRepeat::Clamp => (self.dimensions.0 + 1, self.dimensions.1 + 1),
-            _ => (self.dimensions.0 - 1 + 2 * self.usable_radius, self.dimensions.1 - 1 + 2 * self.usable_radius),
-        };
-        // compute faces
-        println!("{:?}", bounds);
-        let mut faces: Vec<Face> = Vec::with_capacity(bounds.0 * bounds.1 * 2);
-        for x in 0..bounds.0 {
-            for y in 0..bounds.1 {
-                let lower_i = y * bounds.0 + x;
-                let upper_i = (y + 1) * bounds.0 + x;
-                faces.push(Face::new(
-                    Arc::clone(&self.verts[upper_i + 1]),
-                    Arc::clone(&self.verts[upper_i]),
-                    Arc::clone(&self.verts[lower_i]),
-                ));
-                faces.push(Face::new(
-                    Arc::clone(&self.verts[upper_i + 1]),
-                    Arc::clone(&self.verts[lower_i]),
-                    Arc::clone(&self.verts[lower_i + 1]),
-                ));
-            }
-        }
-        self.faces = faces;
-        self.ext_dim = bounds;
-    }
-
     /// Compute mesh height from given image value
     fn compute_height(pix: u8, settings: &GenSettings) -> f32 {
-        (((pix as f32) / 255.0) * (settings.radius as f32) * (settings.img_height_mult))
+        ((f32::from(pix) / 255.0) * (settings.radius as f32) * (settings.img_height_mult))
     }
 }
 
 impl Clone for Mesh {
     fn clone(&self) -> Mesh {
         let mut verts: Vec<Arc<Vec3>> = Vec::new();
-        for vert in self.verts.iter() {
+        for vert in &self.verts {
             verts.push(Arc::new((**vert).clone()));
         }
         Mesh {
-            faces: self.faces.clone(),
             dimensions: self.dimensions,
             ext_dim: self.ext_dim,
-            verts: verts,
+            verts,
             usable_radius: self.usable_radius,
         }
     }

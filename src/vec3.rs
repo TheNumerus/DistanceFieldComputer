@@ -1,7 +1,6 @@
 use std::cmp::Ordering;
 use std::fmt;
 use std::ops::{Add, Index, Sub};
-use vec4::Vec4;
 
 pub struct Vec3 {
     pub x: f32,
@@ -24,9 +23,9 @@ impl Vec3 {
 
     pub fn normalize(&mut self) {
         let inv_len = 1.0 / self.len();
-        self.x = self.x * inv_len;
-        self.y = self.y * inv_len;
-        self.z = self.z * inv_len;
+        self.x *= inv_len;
+        self.y *= inv_len;
+        self.z *= inv_len;
     }
 
     pub fn normalized(&self) -> Vec3 {
@@ -50,40 +49,36 @@ impl Vec3 {
         (self - other).len()
     }
 
-    pub fn to_vec4(&self) -> Vec4 {
-        Vec4::new((self.x, self.y, self.z, 1.0))
-    }
-
     pub fn cmp_x(&self, other: &Vec3) -> Ordering {
         if self.x > other.x {
             return Ordering::Greater;
-        } else if self.x == other.x {
+        } else if (self.x - other.x).abs() < 0.01 {
             return Ordering::Equal;
         };
-        return Ordering::Less;
+        Ordering::Less
     }
 
     pub fn cmp_y(&self, other: &Vec3) -> Ordering {
         if self.y > other.y {
             return Ordering::Greater;
-        } else if self.y == other.y {
+        } else if (self.y - other.y).abs() < 0.01 {
             return Ordering::Equal;
         };
-        return Ordering::Less;
+        Ordering::Less
     }
 
     pub fn cmp_xy(&self, other: &Vec3) -> Ordering {
         if self.y > other.y {
             return Ordering::Greater;
-        } else if self.y == other.y {
+        } else if (self.y - other.y).abs() < 0.01 {
             if self.x > other.x {
                 return Ordering::Greater;
-            } else if self.x == other.x {
+            } else if (self.x - other.x).abs() < 0.01 {
                 return Ordering::Equal;
             };
             return Ordering::Less;
         };
-        return Ordering::Less;
+        Ordering::Less
     }
 
     pub fn delta(&self, other: &Vec3) -> Vec3 {
