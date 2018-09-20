@@ -30,6 +30,9 @@ pub fn generate_distances(mesh: &Mesh, settings: &GenSettings, ext: &Extrema) ->
             Ordering::Equal
         }
     });
+    while spiral.len() % 8 != 0 {
+        spiral.pop();
+    }
     println!("Spiral field done, {} points", spiral.len());
     
     let zero_index = match settings.repeat {
@@ -75,6 +78,65 @@ pub fn generate_distances(mesh: &Mesh, settings: &GenSettings, ext: &Extrema) ->
         dst
     };
 
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[target_feature(enable = "avx2")]
+    unsafe fn get_distance_avx2_repeat(x: isize, y: isize, capture_height: f32, spiral: &Vec<(isize, isize)>, mesh: &Mesh, zero_index: isize) -> f32 {
+        let capture_point = Vec3::new((x as f32 + 0.5, y as f32 + 0.5, capture_height));
+        let mut dst = f32::MAX;
+        for (x_sp, y_sp) in spiral {
+            let x_act = x + *x_sp;
+            let y_act = y + *y_sp;
+            if (x_act as f32 - capture_point.x).abs() > dst || (y_act as f32 - capture_point.y).abs() > dst {
+                break;
+            }
+            let index = (zero_index + x_act + ((mesh.ext_dim.0 as isize + 1) * y_act)) as usize;
+            let point = &(mesh.verts[index]);
+            let dst_to_point = point.distance_to(&capture_point);
+            if dst_to_point < dst {
+                dst = dst_to_point;
+            }
+        }
+        //println!("{:?}", dst);
+        dst
+    };
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[target_feature(enable = "avx2")]
+    unsafe fn get_distance_avx2_clamp(x: isize, y: isize, capture_height: f32, spiral: &Vec<(isize, isize)>, mesh: &Mesh, zero_index: isize) -> f32 {
+        let capture_point = Vec3::new((x as f32 + 0.5, y as f32 + 0.5, capture_height));
+        let mut dst = f32::MAX;
+        for (x_sp, y_sp) in spiral {
+            let x_act = x + *x_sp;
+            let y_act = y + *y_sp;
+            if x_act < 0 || x_act > mesh.dimensions.0 as isize || y_act < 0 || y_act > mesh.dimensions.1 as isize {
+                continue;
+            }
+            if (x_act as f32 - capture_point.x).abs() > dst || (y_act as f32 - capture_point.y).abs() > dst {
+                break;
+            }
+            let index = (zero_index + x_act + ((mesh.ext_dim.0 as isize + 1) * y_act)) as usize;
+            let point = &(mesh.verts[index]);
+            let dst_to_point = point.distance_to(&capture_point);
+            if dst_to_point < dst {
+                dst = dst_to_point;
+            }
+        }
+        dst
+    };
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[target_feature(enable = "avx2")]
+    let get_distance_avx2 = |x: isize, y: isize| {
+        match settings.repeat {
+            ImgRepeat::Clamp => {
+                unsafe { get_distance_avx2_clamp(x, y, capture_height, &spiral, &mesh, zero_index) }
+            },
+            ImgRepeat::Repeat => {
+                unsafe { get_distance_avx2_repeat(x, y, capture_height, &spiral, &mesh, zero_index) }
+            }
+        }
+    };
+
     // generate chunks
     let mut chunks: Vec<Vec<(isize, isize)>> = vec!();
     for x in 0..((mesh.dimensions.0 as f32 / 64.0).ceil() as isize) {
@@ -93,6 +155,13 @@ pub fn generate_distances(mesh: &Mesh, settings: &GenSettings, ext: &Extrema) ->
     let mut distances: Vec<Dist> = chunks.par_iter().map(|chunk| {
         let mut distances: Vec<Dist> = vec!();
         for coords in chunk {
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            {
+                if is_x86_feature_detected!("avx2") {
+                    distances.push(Dist{x: coords.0, y: coords.1, dst: get_distance_avx2(coords.0, coords.1)});
+                    continue;
+                }
+            }
             distances.push(Dist{x: coords.0, y: coords.1, dst: get_distance(coords.0, coords.1)});
         }
         distances
